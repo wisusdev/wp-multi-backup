@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.4
+Version: 0.0.5
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -381,8 +381,14 @@ function logs_menu_page_content() {
     echo '<div class="wrap"><h1 class="wp-heading-inline">Logs de WP Multi Backup</h1></div>';
     $log_file = BACKUP_DIR . 'error_log.txt';
     if (file_exists($log_file)) {
-        $logs = file_get_contents($log_file);
-        echo '<pre>' . esc_html($logs) . '</pre>';
+        if (isset($_POST['delete_logs'])) {
+            unlink($log_file);
+            echo '<div class="updated"><p>Logs eliminados.</p></div>';
+        } else {
+            $logs = file_get_contents($log_file);
+            echo '<pre>' . esc_html($logs) . '</pre>';
+            echo '<form method="post"><input type="submit" name="delete_logs" class="button button-danger" value="Eliminar Logs"></form>';
+        }
     } else {
         echo '<p>No hay logs disponibles.</p>';
     }
