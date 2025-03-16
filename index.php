@@ -173,11 +173,14 @@ function backup_menu_page_content() {
     if($_POST){
         echo '<div class="wrap"><h2>Estamos procesando su solicitud, por favor espere...</h2></div>';
     } else {
-        echo '<div class="wrap"><h2>Opciones de respaldo <button id="show-upload-form" class="button button-primary" style="float: right;">Subir respaldo</button></h2>';
+        echo '<div class="wrap">
+            <h1 class="wp-heading-inline">WP Multi Backup</h1> 
+            <button id="show-upload-form" class="wrap page-title-action" style="float: right;">Subir respaldo</button>
+        </div>';
     }
 
     // Formulario para subir un respaldo (oculto por defecto)
-    echo '<div><form class="wp-upload-form" id="upload-form" method="post" enctype="multipart/form-data" style="display: none;">
+    echo '<div class=""><form class="wp-upload-form" id="upload-form" method="post" enctype="multipart/form-data" style="display: none;">
             <input type="file" name="backup_file">
             <input type="submit" class="button button-primary" value="Subir Respaldo">
           </form></div>';
@@ -188,8 +191,6 @@ function backup_menu_page_content() {
                 form.style.display = form.style.display === "none" ? "block" : "none";
             });
           </script>';
-
-    echo '<h3>Seleccione la opción que desea realizar:</h3></div>';
 
     // Subir respaldo si se presiona el botón
     if (isset($_FILES['backup_file'])) {
@@ -281,14 +282,6 @@ function backup_menu_page_content() {
         echo '<div class="updated"><p>' . esc_html($_GET['message']) . '</p></div>';
     }
 
-    // Botones para crear respaldos
-    echo '<form method="post">
-            <input type="submit" name="db" class="button button-primary" value="Crear Respaldo de la Base de Datos">
-            <input type="submit" name="themes" class="button button-primary" value="Crear Respaldo de los Temas">
-            <input type="submit" name="plugins" class="button button-primary" value="Crear Respaldo de los Plugins">
-            <input type="submit" name="uploads" class="button button-primary" value="Crear Respaldo de los Uploads">
-          </form>';
-
     // Contadores de respaldos
     $db_count = count(list_backups());
     $themes_count = count(list_backups_by_type('themes'));
@@ -296,12 +289,11 @@ function backup_menu_page_content() {
     $uploads_count = count(list_backups_by_type('uploads'));
 
     // Tabs para mostrar respaldos
-    echo '<h3>Respaldos Disponibles</h3>';
     echo '<h2 class="nav-tab-wrapper">';
-    echo '<a href="?page=wp-multi-backup&tab=db" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'db' ? 'nav-tab-active' : '') . '">Base de Datos (' . $db_count . ')</a>';
+    echo '<a href="?page=wp-multi-backup&tab=db" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'db' ? 'nav-tab-active' : '') . '">Base de datos (' . $db_count . ')</a>';
     echo '<a href="?page=wp-multi-backup&tab=themes" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'themes' ? 'nav-tab-active' : '') . '">Temas (' . $themes_count . ')</a>';
     echo '<a href="?page=wp-multi-backup&tab=plugins" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'plugins' ? 'nav-tab-active' : '') . '">Plugins (' . $plugins_count . ')</a>';
-    echo '<a href="?page=wp-multi-backup&tab=uploads" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'uploads' ? 'nav-tab-active' : '') . '">Uploads (' . $uploads_count . ')</a>';
+    echo '<a href="?page=wp-multi-backup&tab=uploads" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'uploads' ? 'nav-tab-active' : '') . '">Archivos subidos (' . $uploads_count . ')</a>';
     echo '</h2>';
 
     $tab = isset($_GET['tab']) ? $_GET['tab'] : 'db';
@@ -309,20 +301,28 @@ function backup_menu_page_content() {
 
     switch ($tab) {
         case 'themes':
+            $input = '<input type="submit" name="themes" class="button button-primary" value="Crear respaldo de temas">';
             $backups = list_backups_by_type('themes');
             break;
         case 'plugins':
+            $input = '<input type="submit" name="plugins" class="button button-primary" value="Crear respaldo de plugins">';
             $backups = list_backups_by_type('plugins');
             break;
         case 'uploads':
+            $input = '<input type="submit" name="uploads" class="button button-primary" value="Crear respaldo de archivos subidos">';
             $backups = list_backups_by_type('uploads');
             break;
         case 'db':
         default:
+            $input = '<input type="submit" name="db" class="button button-primary" value="Crear respaldo de la base de datos">';
             $backups = list_backups();
             break;
     }
 
+    echo '<div class="wrap">';
+    echo '<form method="post">' . $input . '</form>';
+    echo '<br>';
+    
     if (!empty($backups)) {
         echo '<table class="widefat"><thead><tr><th>Archivo</th><th>Tamaño (MB)</th><th>Acciones</th></tr></thead><tbody>';
         foreach ($backups as $backup) {
@@ -349,7 +349,6 @@ function backup_menu_page_content() {
     } else {
         echo '<p>No hay respaldos disponibles.</p>';
     }
-
     echo '</div>';
 }
 
