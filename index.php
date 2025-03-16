@@ -321,9 +321,9 @@ function backup_menu_page_content() {
 
     echo '<div class="wrap">';
     echo '<form method="post">' . $input . '</form>';
-    echo '<br>';
     
     if (!empty($backups)) {
+        echo '<br>';
         echo '<table class="widefat"><thead><tr><th>Archivo</th><th>Tamaño (MB)</th><th>Acciones</th></tr></thead><tbody>';
         foreach ($backups as $backup) {
             $file_path = BACKUP_DIR . $backup;
