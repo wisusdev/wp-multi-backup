@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.8
+Version: 0.0.9
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -20,6 +20,26 @@ define('BACKUP_DIR', WP_CONTENT_DIR . '/wp-multi-backups/');
 if (!file_exists(BACKUP_DIR)) {
     try {
         mkdir(BACKUP_DIR, 0755, true);
+    } catch (Exception $e) {
+        log_error($e->getMessage());
+    }
+}
+
+// Crear el archivo .htaccess si no existe
+$htaccess_path = BACKUP_DIR . '.htaccess';
+if (!file_exists($htaccess_path)) {
+    try {
+        $htaccess_content = <<<HTACCESS
+        # Evitar listado de directorios
+        Options -Indexes
+
+        # Permitir descarga de archivos
+        <FilesMatch "\\.(zip)$">
+            Order allow,deny
+            Allow from all
+        </FilesMatch>
+        HTACCESS;
+        file_put_contents($htaccess_path, $htaccess_content);
     } catch (Exception $e) {
         log_error($e->getMessage());
     }
@@ -420,8 +440,8 @@ function logs_menu_page_content() {
             echo '<div class="updated"><p>Logs eliminados.</p></div>';
         } else {
             $logs = file_get_contents($log_file);
-            echo '<pre>' . esc_html($logs) . '</pre>';
             echo '<form method="post"><input type="submit" name="delete_logs" class="button button-danger" value="Eliminar Logs"></form>';
+            echo '<pre>' . esc_html($logs) . '</pre>';
         }
     } else {
         echo '<p>No hay logs disponibles.</p>';
