@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.10
+Version: 0.0.11
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -452,33 +452,15 @@ add_action('admin_init', function() {
 });
 
 // Función para descargar un respaldo
-// Función para descargar un respaldo
 function download_backup($filename) {
-    $file_path = BACKUP_DIR . $filename;
+    $file_url = site_url('/wp-content/wp-multi-backups/' . $filename);
 
-    // Validar que el archivo exista y tenga la extensión .zip
-    if (!file_exists($file_path) || pathinfo($file_path, PATHINFO_EXTENSION) !== 'zip') {
-        wp_die(__('Archivo no encontrado o formato incorrecto.', 'text-domain'));
+    if (!file_exists(ABSPATH . 'wp-content/wp-multi-backups/' . $filename)) {
+        wp_die(__('El archivo no existe.', 'text-domain'));
     }
 
-    // Asegurar que no haya contenido previo en el buffer de salida
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
-
-    // Establecer los encabezados HTTP para la descarga del archivo
-    header('Content-Description: File Transfer');
-    header('Content-Type: application/zip');
-    header('Content-Disposition: attachment; filename="' . basename($file_path) . '"');
-    header('Content-Transfer-Encoding: binary');
-    header('Expires: 0');
-    header('Cache-Control: must-revalidate');
-    header('Pragma: public');
-    header('Content-Length: ' . filesize($file_path));
-
-    // Forzar la descarga sin interrupciones
-    flush();
-    readfile($file_path);
+    // Redirige al usuario a la URL del archivo (descarga limpia)
+    wp_redirect($file_url);
     exit;
 }
 
