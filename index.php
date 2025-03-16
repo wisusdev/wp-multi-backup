@@ -116,6 +116,34 @@ function download_backup($filename) {
     }
 }
 
+// Función para restaurar un respaldo de la base de datos
+function restore_backup($filename) {
+    global $wpdb;
+    $file_path = BACKUP_DIR . $filename;
+    if (file_exists($file_path)) {
+        $sql = file_get_contents($file_path);
+        $queries = explode(";\n", $sql);
+        foreach ($queries as $query) {
+            if (!empty(trim($query))) {
+                $wpdb->query($query);
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+// Función para restaurar un respaldo de un directorio
+function restore_directory_backup($backup_file, $restore_dir) {
+    $zip = new ZipArchive;
+    if ($zip->open($backup_file) === TRUE) {
+        $zip->extractTo($restore_dir);
+        $zip->close();
+        return true;
+    }
+    return false;
+}
+
 // Función para mostrar el contenido de la página de administración
 function backup_menu_page_content() {
     if($_POST){
@@ -169,6 +197,35 @@ function backup_menu_page_content() {
         $filename = sanitize_text_field($_POST['delete_backup']);
         $deleted = delete_backup($filename);
         $message = $deleted ? 'Respaldo eliminado.' : 'Error al eliminar el respaldo.';
+        echo '<script>window.location.href = "?page=wp-multi-backup&tab=' . urlencode($_GET['tab']) . '&message=' . urlencode($message) . '";</script>';
+        exit;
+    }
+
+    // Restaurar respaldo si se solicita
+    if (isset($_POST['restore_backup'])) {
+        $filename = sanitize_text_field($_POST['restore_backup']);
+        $type = sanitize_text_field($_POST['backup_type']);
+        $restored = false;
+
+        if ($type === 'db') {
+            $restored = restore_backup($filename);
+        } else {
+            $restore_dir = '';
+            switch ($type) {
+                case 'themes':
+                    $restore_dir = get_theme_root();
+                    break;
+                case 'plugins':
+                    $restore_dir = WP_PLUGIN_DIR;
+                    break;
+                case 'uploads':
+                    $restore_dir = WP_CONTENT_DIR . '/uploads';
+                    break;
+            }
+            $restored = restore_directory_backup(BACKUP_DIR . $filename, $restore_dir);
+        }
+
+        $message = $restored ? 'Respaldo restaurado con éxito.' : 'Error al restaurar el respaldo.';
         echo '<script>window.location.href = "?page=wp-multi-backup&tab=' . urlencode($_GET['tab']) . '&message=' . urlencode($message) . '";</script>';
         exit;
     }
@@ -233,6 +290,11 @@ function backup_menu_page_content() {
                         <form method="post" style="display:inline;">
                             <input type="hidden" name="delete_backup" value="' . esc_attr($backup) . '">
                             <input type="submit" class="button button-danger" value="Eliminar">
+                        </form>
+                        <form method="post" style="display:inline;">
+                            <input type="hidden" name="restore_backup" value="' . esc_attr($backup) . '">
+                            <input type="hidden" name="backup_type" value="' . esc_attr($tab) . '">
+                            <input type="submit" class="button button-primary" value="Restaurar">
                         </form>
                     </td>
                 </tr>';
