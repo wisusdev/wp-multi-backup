@@ -144,12 +144,58 @@ function restore_directory_backup($backup_file, $restore_dir) {
     return false;
 }
 
+// Función para subir un respaldo
+function upload_backup($file) {
+    $target_dir = BACKUP_DIR;
+    $target_file = $target_dir . basename($file["name"]);
+    $file_type = pathinfo($target_file, PATHINFO_EXTENSION);
+
+    // Validar el tipo de archivo
+    if ($file_type != "sql" && $file_type != "zip") {
+        return "Solo se permiten archivos .sql y .zip.";
+    }
+
+    // Validar si el archivo ya existe
+    if (file_exists($target_file)) {
+        return "El archivo ya existe.";
+    }
+
+    // Mover el archivo subido al directorio de respaldos
+    if (move_uploaded_file($file["tmp_name"], $target_file)) {
+        return "El archivo ha sido subido.";
+    } else {
+        return "Error al subir el archivo.";
+    }
+}
+
 // Función para mostrar el contenido de la página de administración
 function backup_menu_page_content() {
     if($_POST){
         echo '<div class="wrap"><h2>Estamos procesando su solicitud, por favor espere...</h2></div>';
     } else {
-        echo '<div class="wrap"><h2>Opciones de respaldo</h2>';
+        echo '<div class="wrap"><h2>Opciones de respaldo <button id="show-upload-form" class="button button-primary" style="float: right;">Subir respaldo</button></h2>';
+    }
+
+    // Formulario para subir un respaldo (oculto por defecto)
+    echo '<div><form class="wp-upload-form" id="upload-form" method="post" enctype="multipart/form-data" style="display: none;">
+            <input type="file" name="backup_file">
+            <input type="submit" class="button button-primary" value="Subir Respaldo">
+          </form></div>';
+
+    echo '<script>
+            document.getElementById("show-upload-form").addEventListener("click", function() {
+                var form = document.getElementById("upload-form");
+                form.style.display = form.style.display === "none" ? "block" : "none";
+            });
+          </script>';
+
+    echo '<h3>Seleccione la opción que desea realizar:</h3></div>';
+
+    // Subir respaldo si se presiona el botón
+    if (isset($_FILES['backup_file'])) {
+        $message = upload_backup($_FILES['backup_file']);
+        echo '<script>window.location.href = "?page=wp-multi-backup&tab=' . urlencode($_GET['tab']) . '&message=' . urlencode($message) . '";</script>';
+        exit;
     }
     
     // Crear respaldo de la base de datos si se presiona el botón
