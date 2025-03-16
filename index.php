@@ -3,10 +3,12 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.7
+Version: 0.0.8
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
+Requires at least: 6.0
+Requires PHP: 7.4
 */
 
 if (!defined('ABSPATH')) exit; // Seguridad
@@ -134,20 +136,31 @@ function delete_backup($filename) {
 // Función para descargar un respaldo
 function download_backup($filename) {
     $file_path = BACKUP_DIR . $filename;
-    if (file_exists($file_path)) {
-        header('Content-Description: File Transfer');
-        header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="' . basename($file_path) . '"');
-        header('Content-Transfer-Encoding: binary');
-        header('Expires: 0');
-        header('Cache-Control: must-revalidate');
-        header('Pragma: public');
-        header('Content-Length: ' . filesize($file_path));
-        ob_clean();
-        flush();
-        readfile($file_path);
-        exit;
+
+    // Validar que el archivo exista y tenga la extensión .zip
+    if (!file_exists($file_path) || pathinfo($file_path, PATHINFO_EXTENSION) !== 'zip') {
+        wp_die(__('Archivo no encontrado o formato incorrecto.', 'text-domain'));
     }
+
+    // Asegurar que no haya contenido previo en el buffer de salida
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+
+    // Configurar encabezados para la descarga
+    header('Content-Description: File Transfer');
+    header('Content-Type: application/zip'); // Tipo MIME correcto
+    header('Content-Disposition: attachment; filename="' . basename($file_path) . '"');
+    header('Content-Transfer-Encoding: binary');
+    header('Expires: 0');
+    header('Cache-Control: must-revalidate');
+    header('Pragma: public');
+    header('Content-Length: ' . filesize($file_path));
+
+    // Forzar la descarga sin interrupciones
+    flush();
+    readfile($file_path);
+    exit;
 }
 
 // Función para restaurar un respaldo de la base de datos
