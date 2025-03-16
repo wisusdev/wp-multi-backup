@@ -52,7 +52,9 @@ function backup_multisite_db() {
 
             $rows = $wpdb->get_results("SELECT * FROM `$table_name`", ARRAY_A);
             foreach ($rows as $row) {
-                $values = array_map([$wpdb, 'prepare'], array_values($row));
+                $values = array_map(function($value) use ($wpdb) {
+                    return $wpdb->prepare('%s', $value);
+                }, array_values($row));
                 $sql_dump .= "INSERT INTO `$table_name` VALUES (" . implode(", ", $values) . ");\n";
             }
 
