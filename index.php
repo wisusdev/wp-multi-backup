@@ -180,7 +180,7 @@ function backup_menu_page_content() {
     }
 
     // Formulario para subir un respaldo (oculto por defecto)
-    echo '<div class=""><form class="wp-upload-form" id="upload-form" method="post" enctype="multipart/form-data" style="display: none;">
+    echo '<div class=""><form class="upload-form-backup" id="upload-form" method="post" enctype="multipart/form-data" style="display: none;">
             <input type="file" name="backup_file">
             <input type="submit" class="button button-primary" value="Subir Respaldo">
           </form></div>';
@@ -376,3 +376,9 @@ add_action('admin_init', function() {
         download_backup($filename);
     }
 });
+
+function wp_multi_backup_enqueue_styles() {
+    wp_enqueue_style('wp-multi-backup-style', plugin_dir_url(__FILE__) . 'style.css');
+}
+
+add_action('admin_enqueue_scripts', 'wp_multi_backup_enqueue_styles');
