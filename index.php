@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.1
+Version: 0.0.2
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -19,38 +19,56 @@ if (!file_exists(BACKUP_DIR)) {
     mkdir(BACKUP_DIR, 0755, true);
 }
 
+// Función para registrar errores en un archivo de log
+function log_error($message) {
+    $log_file = BACKUP_DIR . 'error_log.txt';
+    $current_time = date("Y-m-d H:i:s");
+    $log_message = "[$current_time] $message\n";
+    file_put_contents($log_file, $log_message, FILE_APPEND);
+    echo '<div class="error"><p>' . esc_html($message) . '</p></div>';
+}
+
 // Función para crear un respaldo de la base de datos con barra de progreso
 function backup_multisite_db() {
     global $wpdb;
 
-    $backup_file = BACKUP_DIR . "db-backup-" . date("Y-m-d_H-i-s") . ".sql";
+    try {
+        $backup_file = BACKUP_DIR . "db-backup-" . date("Y-m-d_H-i-s") . ".sql";
 
-    $tables = $wpdb->get_results("SHOW TABLES", ARRAY_N);
-    $sql_dump = "";
+        $tables = $wpdb->get_results("SHOW TABLES", ARRAY_N);
+        $sql_dump = "";
 
-    $total_tables = count($tables);
-    $current_table = 0;
+        $total_tables = count($tables);
+        $current_table = 0;
 
-    foreach ($tables as $table) {
-        $table_name = $table[0];
-        $create_table = $wpdb->get_row("SHOW CREATE TABLE `$table_name`", ARRAY_N);
-        $sql_dump .= "\n\n" . $create_table[1] . ";\n\n";
+        foreach ($tables as $table) {
+            $table_name = $table[0];
+            $create_table = $wpdb->get_row("SHOW CREATE TABLE `$table_name`", ARRAY_N);
+            $sql_dump .= "\n\n" . $create_table[1] . ";\n\n";
 
-        $rows = $wpdb->get_results("SELECT * FROM `$table_name`", ARRAY_A);
-        foreach ($rows as $row) {
-            $values = array_map([$wpdb, 'prepare'], array_values($row));
-            $sql_dump .= "INSERT INTO `$table_name` VALUES (" . implode(", ", $values) . ");\n";
+            $rows = $wpdb->get_results("SELECT * FROM `$table_name`", ARRAY_A);
+            foreach ($rows as $row) {
+                $values = array_map([$wpdb, 'prepare'], array_values($row));
+                $sql_dump .= "INSERT INTO `$table_name` VALUES (" . implode(", ", $values) . ");\n";
+            }
+
+            $current_table++;
+            $progress = ($current_table / $total_tables) * 100;
+            echo '<script>document.getElementById("backup-progress").value = ' . $progress . ';</script>';
+            flush();
         }
 
-        $current_table++;
-        $progress = ($current_table / $total_tables) * 100;
-        echo '<script>document.getElementById("backup-progress").value = ' . $progress . ';</script>';
-        flush();
+        file_put_contents($backup_file, $sql_dump);
+
+        if (!file_exists($backup_file)) {
+            throw new Exception('El archivo de respaldo no se creó correctamente.');
+        }
+
+        return true;
+    } catch (Exception $e) {
+        log_error($e->getMessage());
+        return false;
     }
-
-    file_put_contents($backup_file, $sql_dump);
-
-    return file_exists($backup_file);
 }
 
 // Función para crear un respaldo de un directorio con barra de progreso
