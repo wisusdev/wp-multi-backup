@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.5
+Version: 0.0.6
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -38,6 +38,7 @@ function backup_multisite_db() {
 
     try {
         $backup_file = BACKUP_DIR . "db-backup-" . date("Y-m-d_H-i-s") . ".sql";
+        $zip_file = BACKUP_DIR . "db-backup-" . date("Y-m-d_H-i-s") . ".zip";
 
         $tables = $wpdb->get_results("SHOW TABLES", ARRAY_N);
         $sql_dump = "";
@@ -68,6 +69,15 @@ function backup_multisite_db() {
 
         if (!file_exists($backup_file)) {
             throw new Exception('El archivo de respaldo no se creó correctamente.');
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($zip_file, ZipArchive::CREATE) === TRUE) {
+            $zip->addFile($backup_file, basename($backup_file));
+            $zip->close();
+            unlink($backup_file); // Eliminar el archivo .sql después de comprimirlo
+        } else {
+            throw new Exception('No se pudo crear el archivo zip.');
         }
 
         return true;
@@ -105,12 +115,6 @@ function backup_directory($directory, $backup_name) {
     return false;
 }
 
-// Función para listar los respaldos
-function list_backups() {
-    $files = glob(BACKUP_DIR . "*.sql");
-    return array_map('basename', $files);
-}
-
 // Función para listar los respaldos por tipo
 function list_backups_by_type($type) {
     $files = glob(BACKUP_DIR . "$type-backup-*.zip");
@@ -141,18 +145,29 @@ function download_backup($filename) {
 }
 
 // Función para restaurar un respaldo de la base de datos
-function restore_backup($filename) {
+function restore_db_backup($filename) {
     global $wpdb;
     $file_path = BACKUP_DIR . $filename;
     if (file_exists($file_path)) {
-        $sql = file_get_contents($file_path);
-        $queries = explode(";\n", $sql);
-        foreach ($queries as $query) {
-            if (!empty(trim($query))) {
-                $wpdb->query($query);
+        $zip = new ZipArchive;
+        if ($zip->open($file_path) === TRUE) {
+            $sql_file = $zip->getNameIndex(0);
+            $zip->extractTo(BACKUP_DIR, $sql_file);
+            $zip->close();
+
+            $sql_path = BACKUP_DIR . $sql_file;
+            if (file_exists($sql_path)) {
+                $sql = file_get_contents($sql_path);
+                $queries = explode(";\n", $sql);
+                foreach ($queries as $query) {
+                    if (!empty(trim($query))) {
+                        $wpdb->query($query);
+                    }
+                }
+                unlink($sql_path); // Eliminar el archivo .sql después de restaurar
+                return true;
             }
         }
-        return true;
     }
     return false;
 }
@@ -175,8 +190,8 @@ function upload_backup($file) {
     $file_type = pathinfo($target_file, PATHINFO_EXTENSION);
 
     // Validar el tipo de archivo
-    if ($file_type != "sql" && $file_type != "zip") {
-        return "Solo se permiten archivos .sql y .zip.";
+    if ($file_type != "zip") {
+        return "Solo se permiten archivos .zip.";
     }
 
     // Validar si el archivo ya existe
@@ -279,7 +294,7 @@ function backup_menu_page_content() {
         $restored = false;
 
         if ($type === 'db') {
-            $restored = restore_backup($filename);
+            $restored = restore_db_backup($filename);
         } else {
             $restore_dir = '';
             switch ($type) {
@@ -307,7 +322,7 @@ function backup_menu_page_content() {
     }
 
     // Contadores de respaldos
-    $db_count = count(list_backups());
+    $db_count = count(list_backups_by_type('db'));
     $themes_count = count(list_backups_by_type('themes'));
     $plugins_count = count(list_backups_by_type('plugins'));
     $uploads_count = count(list_backups_by_type('uploads'));
@@ -339,7 +354,7 @@ function backup_menu_page_content() {
         case 'db':
         default:
             $input = '<input type="submit" name="db" class="button button-primary" value="Crear respaldo de la base de datos">';
-            $backups = list_backups();
+            $backups = list_backups_by_type('db');
             break;
     }
 
