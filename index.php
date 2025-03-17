@@ -71,14 +71,26 @@ function backup_multisite_db() {
         foreach ($tables as $table) {
             $table_name = $table[0];
             $create_table = $wpdb->get_row("SHOW CREATE TABLE `$table_name`", ARRAY_N);
-            $sql_dump .= "\n\n" . $create_table[1] . ";\n\n";
+            $sql_dump .= "\n\n--\n-- Table structure for table `$table_name`\n--\n\n";
+            $sql_dump .= "DROP TABLE IF EXISTS `$table_name`;\n";
+            $sql_dump .= "/*!40101 SET @saved_cs_client     = @@character_set_client */;\n";
+            $sql_dump .= "/*!50503 SET character_set_client = utf8mb4 */;\n";
+            $sql_dump .= $create_table[1] . ";\n";
+            $sql_dump .= "/*!40101 SET character_set_client = @saved_cs_client */;\n";
 
             $rows = $wpdb->get_results("SELECT * FROM `$table_name`", ARRAY_A);
-            foreach ($rows as $row) {
-                $values = array_map(function($value) use ($wpdb) {
-                    return $wpdb->prepare('%s', $value);
-                }, array_values($row));
-                $sql_dump .= "INSERT INTO `$table_name` VALUES (" . implode(", ", $values) . ");\n";
+            if (!empty($rows)) {
+                $sql_dump .= "\n--\n-- Dumping data for table `$table_name`\n--\n\n";
+                $sql_dump .= "LOCK TABLES `$table_name` WRITE;\n";
+                $sql_dump .= "/*!40000 ALTER TABLE `$table_name` DISABLE KEYS */;\n";
+                foreach ($rows as $row) {
+                    $values = array_map(function($value) use ($wpdb) {
+                        return $wpdb->prepare('%s', $value);
+                    }, array_values($row));
+                    $sql_dump .= "INSERT INTO `$table_name` VALUES (" . implode(", ", $values) . ");\n";
+                }
+                $sql_dump .= "/*!40000 ALTER TABLE `$table_name` ENABLE KEYS */;\n";
+                $sql_dump .= "UNLOCK TABLES;\n";
             }
 
             $current_table++;
@@ -170,10 +182,28 @@ function restore_db_backup($filename) {
                 $queries = explode(";\n", $sql);
                 foreach ($queries as $query) {
                     if (!empty(trim($query))) {
+                        if (preg_match('/^CREATE TABLE `([^`]+)`/', $query, $matches)) {
+                            $table_name = $matches[1];
+                            echo $table_name . '<br>';
+                            $wpdb->query("TRUNCATE TABLE `$table_name`");
+                        }
                         $wpdb->query($query);
                     }
                 }
-                unlink($sql_path); // Eliminar el archivo .sql después de restaurar
+                unlink($sql_path);
+
+                // Obtener el dominio actual
+                $current_domain = parse_url(home_url(), PHP_URL_HOST);
+
+                // Consultas adicionales para modificar las tablas en multisite
+                $wpdb->query($wpdb->prepare("UPDATE wp_site SET domain = %s WHERE id = 1;", $current_domain));
+                $wpdb->query($wpdb->prepare("UPDATE wp_blogs SET domain = %s;", $current_domain));
+                $wpdb->query($wpdb->prepare("UPDATE wp_options SET option_value = %s WHERE option_name IN ('home', 'siteurl');", 'http://' . $current_domain));
+
+                if(is_multisite()) {
+                    $wpdb->query("UPDATE wp_options SET option_value = 'a:0:{}' WHERE option_name = 'active_plugins';");
+                }
+
                 return true;
             }
         }
@@ -418,6 +448,74 @@ function logs_menu_page_content() {
     }
 }
 
+// Función para actualizar dominios de multisitio
+function update_multisite_domains() {
+    global $wpdb;
+
+    $current_domain = parse_url(home_url(), PHP_URL_HOST);
+    $scheme = is_ssl() ? 'https' : 'http';
+    $full_url = $scheme . '://' . $current_domain;
+
+    echo '<div class="wrap"><h1 class="wp-heading-inline">Actualizar dominios</h1></div>';
+
+    // Get wp_blog table
+    $blogs = $wpdb->get_results("SELECT blog_id FROM wp_blogs", ARRAY_A);
+
+    echo '<table class="widefat">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Actions</th>
+                <th>URL</th>
+            </tr>
+        </thead>
+        <tbody>';
+
+    foreach ($blogs as $blog) {
+        $blog_id = $blog['blog_id'];
+        
+        if($blog_id == 1) {
+            continue;
+        }
+
+        $domain = $wpdb->get_results("SELECT * FROM wp_" . $blog_id . "_options WHERE option_name = 'siteurl'");
+
+        foreach ($domain as $d) {
+            $option_name = $d->option_name;
+            $option_value = $d->option_value;
+
+            // Extraer el path de la URL
+            $path = parse_url($option_value, PHP_URL_PATH);
+            
+            // Si existe el path, concatenar el nuevo dominio
+            if ($path) {
+                $new_url = $full_url . $path;
+            } else {
+                $new_url = $full_url;
+            }
+
+            if (isset($_POST['update_blog_domains_' . $blog_id])) {
+                // Update option value where option name is 'home' and 'siteurl'
+                $wpdb->update('wp_' . $blog_id . '_options', array('option_value' => $new_url), array('option_name' => 'home'));
+                $wpdb->update('wp_' . $blog_id . '_options', array('option_value' => $new_url), array('option_name' => 'siteurl'));
+            }
+
+            echo '<tr>
+                <td>' . esc_html($blog_id) . '</td>
+                <td>
+                    <form method="post">
+                        <input class="input-update-domain" type="text" name="current_domain" value="' . esc_attr($new_url) . '">
+                        <input type="submit" name="update_blog_domains_' . $blog_id . '" class="button button-primary" value="Actualizar">
+                    </form>
+                </td>
+                <td><a href="' . esc_url($new_url) . '" target="_blank">' . esc_html($option_value) . '</a></td>
+            </tr>';
+        }
+    }
+
+    echo '</tbody></table>';
+}
+
 // Función para agregar el menú de administración
 function add_backup_menu() {
     $capability = is_multisite() && is_super_admin() ? 'manage_network' : 'manage_options';
@@ -429,6 +527,14 @@ function add_backup_menu() {
         'backup_menu_page_content', // Contenido de la página
         'dashicons-backup', // Icono del menú
         6 // Posición del menú
+    );
+    add_submenu_page(
+        'wp-multi-backup', // Slug del menú principal
+        'Actualizar dominios', // Título de la página
+        'Actualizar dominios', // Título del submenú
+        $capability,
+        'wp-multi-backup-update-domains', // Slug del submenú
+        'update_multisite_domains' // Contenido de la página
     );
     add_submenu_page(
         'wp-multi-backup', // Slug del menú principal
