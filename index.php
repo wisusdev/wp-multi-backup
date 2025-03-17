@@ -458,10 +458,19 @@ function update_multisite_domains() {
 
     echo '<div class="wrap"><h1 class="wp-heading-inline">Actualizar dominios</h1></div>';
 
+    $blog_id = isset($_POST['blog_id']) ? intval($_POST['blog_id']) : 0;
+    $new_domain = isset($_POST['new_domain']) ? esc_url($_POST['new_domain']) : '';
+
+    if (isset($_POST['update_blog_domains_' . $blog_id])) {
+        // Update option value where option name is 'home' and 'siteurl'
+        $wpdb->update('wp_' . $blog_id . '_options', array('option_value' => $new_domain), array('option_name' => 'home'));
+        $wpdb->update('wp_' . $blog_id . '_options', array('option_value' => $new_domain), array('option_name' => 'siteurl'));
+    }
+
     // Get wp_blog table
     $blogs = $wpdb->get_results("SELECT blog_id FROM wp_blogs", ARRAY_A);
 
-    echo '<table class="widefat">
+    echo '<table id="table-update-domain" class="widefat">
         <thead>
             <tr>
                 <th>ID</th>
@@ -494,17 +503,12 @@ function update_multisite_domains() {
                 $new_url = $full_url;
             }
 
-            if (isset($_POST['update_blog_domains_' . $blog_id])) {
-                // Update option value where option name is 'home' and 'siteurl'
-                $wpdb->update('wp_' . $blog_id . '_options', array('option_value' => $new_url), array('option_name' => 'home'));
-                $wpdb->update('wp_' . $blog_id . '_options', array('option_value' => $new_url), array('option_name' => 'siteurl'));
-            }
-
             echo '<tr>
                 <td>' . esc_html($blog_id) . '</td>
                 <td>
                     <form method="post">
-                        <input class="input-update-domain" type="text" name="current_domain" value="' . esc_attr($new_url) . '">
+                        <input class="input-update-domain" type="text" name="new_domain" value="' . esc_attr($new_url) . '">
+                        <input type="hidden" name="blog_id" value="' . esc_attr($blog_id) . '">
                         <input type="submit" name="update_blog_domains_' . $blog_id . '" class="button button-primary" value="Actualizar">
                     </form>
                 </td>
