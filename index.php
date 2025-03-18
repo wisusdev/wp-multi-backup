@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.11
+Version: 0.0.12
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -128,24 +128,19 @@ function backup_directory($directory, $backup_name) {
 
     if ($zip->open($backup_file, ZipArchive::CREATE) === TRUE) {
         $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory), RecursiveIteratorIterator::LEAVES_ONLY);
-        $total_files = iterator_count($files);
-        $current_file = 0;
 
         foreach ($files as $file) {
             if (!$file->isDir()) {
                 $file_path = $file->getRealPath();
                 $relative_path = substr($file_path, strlen($directory) + 1);
                 $zip->addFile($file_path, $relative_path);
-
-                $current_file++;
-                $progress = ($current_file / $total_files) * 100;
-                echo '<script>document.getElementById("backup-progress").value = ' . $progress . ';</script>';
                 flush();
             }
         }
         $zip->close();
         return file_exists($backup_file);
     }
+    
     return false;
 }
 
@@ -240,27 +235,93 @@ function upload_backup($file) {
 
     // Mover el archivo subido al directorio de respaldos
     if (move_uploaded_file($file["tmp_name"], $target_file)) {
+        log_error("Archivo subido: " . $file["name"]);
         return "El archivo ha sido subido.";
     } else {
+        log_error("Error al subir el archivo: " . $file["name"]);
         return "Error al subir el archivo.";
     }
 }
 
+// Función para manejar las peticiones AJAX
+function handle_ajax_requests() {
+    check_ajax_referer('wp_multi_backup_nonce', 'nonce');
+
+    $action = isset($_POST['action_type']) ? sanitize_text_field($_POST['action_type']) : '';
+
+    switch ($action) {
+        case 'create_db_backup':
+            $success = backup_multisite_db();
+            $message = $success ? 'Respaldo de la base de datos creado con éxito.' : 'Error al crear el respaldo de la base de datos.';
+            wp_send_json_success($message);
+            break;
+        case 'create_themes_backup':
+            $success = backup_directory(get_theme_root(), 'themes-backup');
+            $message = $success ? 'Respaldo de los temas creado con éxito.' : 'Error al crear el respaldo de los temas.';
+            wp_send_json_success($message);
+            break;
+        case 'create_plugins_backup':
+            $success = backup_directory(WP_PLUGIN_DIR, 'plugins-backup');
+            $message = $success ? 'Respaldo de los plugins creado con éxito.' : 'Error al crear el respaldo de los plugins.';
+            wp_send_json_success($message);
+            break;
+        case 'create_uploads_backup':
+            $success = backup_directory(WP_CONTENT_DIR . '/uploads', 'uploads-backup');
+            $message = $success ? 'Respaldo de los uploads creado con éxito.' : 'Error al crear el respaldo de los uploads.';
+            wp_send_json_success($message);
+            break;
+        case 'delete_backup':
+            $filename = sanitize_text_field($_POST['filename']);
+            $deleted = delete_backup($filename);
+            $message = $deleted ? 'Respaldo eliminado.' : 'Error al eliminar el respaldo.';
+            wp_send_json_success($message);
+            break;
+        case 'restore_backup':
+            $filename = sanitize_text_field($_POST['filename']);
+            $type = sanitize_text_field($_POST['backup_type']);
+            $restored = false;
+
+            if ($type === 'db') {
+                $restored = restore_db_backup($filename);
+            } else {
+                $restore_dir = '';
+                switch ($type) {
+                    case 'themes':
+                        $restore_dir = get_theme_root();
+                        break;
+                    case 'plugins':
+                        $restore_dir = WP_PLUGIN_DIR;
+                        break;
+                    case 'uploads':
+                        $restore_dir = WP_CONTENT_DIR . '/uploads';
+                        break;
+                }
+                $restored = restore_directory_backup(BACKUP_DIR . $filename, $restore_dir);
+            }
+
+            $message = $restored ? 'Respaldo restaurado con éxito.' : 'Error al restaurar el respaldo.';
+            wp_send_json_success($message);
+            break;
+        default:
+            wp_send_json_error('Acción no válida.');
+            break;
+    }
+}
+
+add_action('wp_ajax_handle_ajax_requests', 'handle_ajax_requests');
+
 // Función para mostrar el contenido de la página de administración
 function backup_menu_page_content() {
-    if($_POST){
-        echo '<div class="wrap"><h2>Estamos procesando su solicitud, por favor espere...</h2></div>';
-    } else {
-        echo '<div class="wrap">
-            <h1 class="wp-heading-inline">WP Multi Backup</h1> 
-            <button id="show-upload-form" class="wrap page-title-action" style="float: right;">Subir respaldo</button>
-        </div>';
-    }
+    echo '<div class="wrap">
+        <h1 class="wp-heading-inline">WP Multi Backup <span id="loading-indicator" style="display:none;"><img class="loader-image" src="' . plugin_dir_url(__FILE__) . 'loading.gif" alt="Loading..." /></span></h1>
+        <button id="show-upload-form" class="wrap page-title-action" style="float: right;">Subir respaldo</button>
+    </div>';
 
     // Formulario para subir un respaldo (oculto por defecto)
     echo '<div class=""><form class="upload-form-backup" id="upload-form" method="post" enctype="multipart/form-data" style="display: none;">
-            <input type="file" name="backup_file">
+            <input type="file" name="backup_file" id="backup_file">
             <input type="submit" class="button button-primary" value="Subir Respaldo">
+            <progress id="upload-progress" value="0" max="100" style="width: 100%; display: none;"></progress>
           </form></div>';
 
     echo '<script>
@@ -269,91 +330,6 @@ function backup_menu_page_content() {
                 form.style.display = form.style.display === "none" ? "block" : "none";
             });
           </script>';
-
-    // Subir respaldo si se presiona el botón
-    if (isset($_FILES['backup_file'])) {
-        $message = upload_backup($_FILES['backup_file']);
-        echo '<script>window.location.href = "?page=wp-multi-backup&tab=' . urlencode($_GET['tab']) . '&message=' . urlencode($message) . '";</script>';
-        exit;
-    }
-    
-    // Crear respaldo de la base de datos si se presiona el botón
-    if (isset($_POST['db'])) {
-        echo '<progress id="backup-progress" value="0" max="100" style="width: 100%;"></progress>';
-        echo '<script>document.getElementById("backup-progress").style.display = "block";</script>';
-        $success = backup_multisite_db();
-        $message = $success ? 'Respaldo de la base de datos creado con éxito.' : 'Error al crear el respaldo de la base de datos.';
-        echo '<script>window.location.href = "?page=wp-multi-backup&tab=db&message=' . urlencode($message) . '";</script>';
-        exit;
-    }
-
-    // Crear respaldo de los temas si se presiona el botón
-    if (isset($_POST['themes'])) {
-        echo '<progress id="backup-progress" value="0" max="100" style="width: 100%;"></progress>';
-        echo '<script>document.getElementById("backup-progress").style.display = "block";</script>';
-        $success = backup_directory(get_theme_root(), 'themes-backup');
-        $message = $success ? 'Respaldo de los temas creado con éxito.' : 'Error al crear el respaldo de los temas.';
-        echo '<script>window.location.href = "?page=wp-multi-backup&tab=themes&message=' . urlencode($message) . '";</script>';
-        exit;
-    }
-
-    // Crear respaldo de los plugins si se presiona el botón
-    if (isset($_POST['plugins'])) {
-        echo '<progress id="backup-progress" value="0" max="100" style="width: 100%;"></progress>';
-        echo '<script>document.getElementById("backup-progress").style.display = "block";</script>';
-        $success = backup_directory(WP_PLUGIN_DIR, 'plugins-backup');
-        $message = $success ? 'Respaldo de los plugins creado con éxito.' : 'Error al crear el respaldo de los plugins.';
-        echo '<script>window.location.href = "?page=wp-multi-backup&tab=plugins&message=' . urlencode($message) . '";</script>';
-        exit;
-    }
-
-    // Crear respaldo de los uploads si se presiona el botón
-    if (isset($_POST['uploads'])) {
-        echo '<progress id="backup-progress" value="0" max="100" style="width: 100%;"></progress>';
-        echo '<script>document.getElementById("backup-progress").style.display = "block";</script>';
-        $success = backup_directory(WP_CONTENT_DIR . '/uploads', 'uploads-backup');
-        $message = $success ? 'Respaldo de los uploads creado con éxito.' : 'Error al crear el respaldo de los uploads.';
-        echo '<script>window.location.href = "?page=wp-multi-backup&tab=uploads&message=' . urlencode($message) . '";</script>';
-        exit;
-    }
-
-    // Eliminar respaldo si se solicita
-    if (isset($_POST['delete_backup'])) {
-        $filename = sanitize_text_field($_POST['delete_backup']);
-        $deleted = delete_backup($filename);
-        $message = $deleted ? 'Respaldo eliminado.' : 'Error al eliminar el respaldo.';
-        echo '<script>window.location.href = "?page=wp-multi-backup&tab=' . urlencode($_GET['tab']) . '&message=' . urlencode($message) . '";</script>';
-        exit;
-    }
-
-    // Restaurar respaldo si se solicita
-    if (isset($_POST['restore_backup'])) {
-        $filename = sanitize_text_field($_POST['restore_backup']);
-        $type = sanitize_text_field($_POST['backup_type']);
-        $restored = false;
-
-        if ($type === 'db') {
-            $restored = restore_db_backup($filename);
-        } else {
-            $restore_dir = '';
-            switch ($type) {
-                case 'themes':
-                    $restore_dir = get_theme_root();
-                    break;
-                case 'plugins':
-                    $restore_dir = WP_PLUGIN_DIR;
-                    break;
-                case 'uploads':
-                    $restore_dir = WP_CONTENT_DIR . '/uploads';
-                    break;
-            }
-            $restored = restore_directory_backup(BACKUP_DIR . $filename, $restore_dir);
-        }
-
-        $message = $restored ? 'Respaldo restaurado con éxito.' : 'Error al restaurar el respaldo.';
-        echo '<script>window.location.href = "?page=wp-multi-backup&tab=' . urlencode($_GET['tab']) . '&message=' . urlencode($message) . '";</script>';
-        exit;
-    }
 
     // Mostrar mensajes
     if (isset($_GET['message'])) {
@@ -379,26 +355,26 @@ function backup_menu_page_content() {
 
     switch ($tab) {
         case 'themes':
-            $input = '<input type="submit" name="themes" class="button button-primary" value="Crear respaldo de temas">';
+            $input = '<button id="create-themes-backup" class="button button-primary">Crear respaldo de temas</button>';
             $backups = list_backups_by_type('themes');
             break;
         case 'plugins':
-            $input = '<input type="submit" name="plugins" class="button button-primary" value="Crear respaldo de plugins">';
+            $input = '<button id="create-plugins-backup" class="button button-primary">Crear respaldo de plugins</button>';
             $backups = list_backups_by_type('plugins');
             break;
         case 'uploads':
-            $input = '<input type="submit" name="uploads" class="button button-primary" value="Crear respaldo de archivos subidos">';
+            $input = '<button id="create-uploads-backup" class="button button-primary">Crear respaldo de archivos subidos</button>';
             $backups = list_backups_by_type('uploads');
             break;
         case 'db':
         default:
-            $input = '<input type="submit" name="db" class="button button-primary" value="Crear respaldo de la base de datos">';
+            $input = '<button id="create-db-backup" class="button button-primary">Crear respaldo de la base de datos</button>';
             $backups = list_backups_by_type('db');
             break;
     }
 
     echo '<div class="wrap">';
-    echo '<form method="post">' . $input . '</form>';
+    echo '<form id="backup-form">' . $input . '</form>';
     
     if (!empty($backups)) {
         echo '<br>';
@@ -411,15 +387,8 @@ function backup_menu_page_content() {
                     <td>' . esc_html($file_size) . '</td>
                     <td>
                         <a href="' . esc_url(admin_url('admin.php?page=wp-multi-backup&download=' . urlencode($backup))) . '" class="button">Descargar</a>
-                        <form method="post" style="display:inline;">
-                            <input type="hidden" name="delete_backup" value="' . esc_attr($backup) . '">
-                            <input type="submit" class="button button-danger" value="Eliminar">
-                        </form>
-                        <form method="post" style="display:inline;">
-                            <input type="hidden" name="restore_backup" value="' . esc_attr($backup) . '">
-                            <input type="hidden" name="backup_type" value="' . esc_attr($tab) . '">
-                            <input type="submit" class="button button-primary" value="Restaurar">
-                        </form>
+                        <button class="button button-danger delete-backup" data-filename="' . esc_attr($backup) . '">Eliminar</button>
+                        <button class="button button-primary restore-backup" data-filename="' . esc_attr($backup) . '" data-type="' . esc_attr($tab) . '">Restaurar</button>
                     </td>
                 </tr>';
         }
@@ -574,8 +543,30 @@ function download_backup($filename) {
     exit;
 }
 
-function wp_multi_backup_enqueue_styles() {
+function wp_multi_backup_enqueue_scripts() {
     wp_enqueue_style('wp-multi-backup-style', plugin_dir_url(__FILE__) . 'style.css');
+    wp_enqueue_script('wp-multi-backup-script', plugin_dir_url(__FILE__) . 'script.js', array('jquery'), null, true);
+    wp_localize_script('wp-multi-backup-script', 'wpMultiBackup', array(
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce('wp_multi_backup_nonce')
+    ));
 }
 
-add_action('admin_enqueue_scripts', 'wp_multi_backup_enqueue_styles');
+add_action('admin_enqueue_scripts', 'wp_multi_backup_enqueue_scripts');
+
+// Función para manejar la subida de archivos vía AJAX
+function handle_ajax_upload() {
+    check_ajax_referer('wp_multi_backup_nonce', 'nonce');
+
+    if (!empty($_FILES['backup_file'])) {
+        $file = $_FILES['backup_file'];
+        $message = upload_backup($file);
+        log_error("Resultado de la subida vía AJAX: " . $message);
+        wp_send_json_success($message);
+    } else {
+        log_error("No se recibió ningún archivo en la subida vía AJAX.");
+        wp_send_json_error('No se recibió ningún archivo.');
+    }
+}
+
+add_action('wp_ajax_upload_backup', 'handle_ajax_upload');
