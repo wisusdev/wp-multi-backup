@@ -65,9 +65,6 @@ function backup_multisite_db() {
         $tables = $wpdb->get_results("SHOW TABLES", ARRAY_N);
         $sql_dump = "";
 
-        $total_tables = count($tables);
-        $current_table = 0;
-
         foreach ($tables as $table) {
             $table_name = $table[0];
             $create_table = $wpdb->get_row("SHOW CREATE TABLE `$table_name`", ARRAY_N);
@@ -93,9 +90,6 @@ function backup_multisite_db() {
                 $sql_dump .= "UNLOCK TABLES;\n";
             }
 
-            $current_table++;
-            $progress = ($current_table / $total_tables) * 100;
-            echo '<script>document.getElementById("backup-progress").value = ' . $progress . ';</script>';
             flush();
         }
 
