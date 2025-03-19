@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.21
+Version: 0.0.22
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -227,7 +227,7 @@ function upload_backup($file): string
 {
     try {
         if (!isset($file['error']) || is_array($file['error'])) {
-            return "Error en la subida del archivo.";
+            return "Error en la subida del archivo. " . json_encode($file['error']);
         }
 
         if ($file['error'] !== UPLOAD_ERR_OK) {
@@ -266,7 +266,6 @@ function upload_backup($file): string
             return "Error al mover el archivo.";
         }
 
-        logs("Archivo subido: " . $file_name);
         return "El archivo ha sido subido correctamente.";
     } catch (Exception $e) {
         logs($e->getMessage());
@@ -594,8 +593,8 @@ function php_version_notice(): void
             <p><strong>Upload Max Filesize:</strong> ' . esc_html($upload_max_filesize) . '</p>
             <p><strong>Post Max Size:</strong> ' . esc_html($post_max_size) . '</p>
             <p><strong>Memory Limit:</strong> ' . esc_html($memory_limit) . '</p>
-            <p><strong>Max Execution Time:</strong> ' . esc_html($max_execution_time) . '</p>
-            <p><strong>Max Input Time:</strong> ' . esc_html($max_input_time) . '</p>
+            <p><strong>Max Execution Time:</strong> ' . esc_html($max_execution_time) . ' seconds</p>
+            <p><strong>Max Input Time:</strong> ' . esc_html($max_input_time) . ' seconds</p>
             
             <br>
             
@@ -689,13 +688,19 @@ add_action('admin_enqueue_scripts', 'wp_multi_backup_enqueue_scripts');
 // Función para manejar la subida de archivos vía AJAX
 function handle_ajax_upload(): void
 {
+    $start = microtime(true);
+
     check_ajax_referer('wp_multi_backup_nonce', 'nonce');
 
     if (!empty($_FILES['backup_file'])) {
         $file = $_FILES['backup_file'];
         $message = upload_backup($file);
-        logs("Resultado de la subida vía AJAX: " . $message);
-        wp_send_json_success($message);
+
+        $end = microtime(true);
+        $duration = $end - $start;
+        logs("Resultado de la subida vía AJAX: " . $message . ". Tiempo de ejecución: " . round($duration, 3) . " seg.");
+
+        wp_send_json_success($message . " (Tardó " . round($duration, 3) . " seg.)");
     } else {
         logs("No se recibió ningún archivo en la subida vía AJAX.");
         wp_send_json_error('No se recibió ningún archivo.');
