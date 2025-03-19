@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.23
+Version: 0.0.24
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -398,18 +398,21 @@ function backup_menu_page_content(): void
     </div>';
 
     // Formulario para subir un respaldo (oculto por defecto)
-    echo '<div class=""><form class="upload-form-backup" id="upload-form" method="post" enctype="multipart/form-data" style="display: none;">
-            <input type="file" name="backup_file" id="backup_file" required accept="application/zip">
-            <input type="submit" class="button button-primary" value="Subir Respaldo">
-            <progress id="upload-progress" value="0" max="100"></progress>
-          </form></div>';
-
-    echo '<script>
-            document.getElementById("show-upload-form").addEventListener("click", function() {
-                let form = document.getElementById("upload-form");
-                form.style.display = form.style.display === "none" ? "block" : "none";
-            });
-          </script>';
+    echo '<div class="upload-file-form" style="display: none;">
+            <p>
+                Antes de subir un respaldo, asegúrate de que el archivo sea un <strong>.zip</strong> y que no exceda el tamaño máximo permitido por el servidor.
+                El tamaño máximo permitido para subir archivos es de <strong>' . ini_get('upload_max_filesize') . '</strong>.
+                El tamaño máximo permitido para subir archivos en un formulario es de <strong>' . ini_get('post_max_size') . '</strong>.
+                El límite de memoria actual es de <strong>' . ini_get('memory_limit') . '</strong>.
+            </p>
+            <p><strong>Nota:</strong> Si el archivo es muy grande, es posible que la subida tarde un poco. Por favor, no cierres la página hasta que se complete la subida.</p>
+            
+            <form class="upload-form-backup" id="upload-form" method="post" enctype="multipart/form-data">
+                <input type="file" name="backup_file" id="backup_file" required accept="application/zip">
+                <input type="submit" class="button button-primary" value="Subir Respaldo">
+                <progress id="upload-progress" value="0" max="100"></progress>
+            </form>
+          </div>';
 
     // Mostrar mensajes
     if (isset($_GET['message'])) {
@@ -679,7 +682,9 @@ function wp_multi_backup_enqueue_scripts(): void
     wp_enqueue_script('wp-multi-backup-script', plugin_dir_url(__FILE__) . 'script.js', array('jquery'), null, true);
     wp_localize_script('wp-multi-backup-script', 'wpMultiBackup', array(
         'ajax_url' => admin_url('admin-ajax.php'),
-        'nonce' => wp_create_nonce('wp_multi_backup_nonce')
+        'nonce' => wp_create_nonce('wp_multi_backup_nonce'),
+        'max_upload_size' => ini_get_bytes('post_max_size'),
+        'upload_max_filesize' => ini_get('upload_max_filesize'),
     ));
 }
 

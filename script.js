@@ -7,6 +7,24 @@ jQuery(document).ready(function($) {
         $('#loading-indicator').hide();
     }
 
+    document.getElementById("show-upload-form").addEventListener("click", function() {
+        let container = document.querySelector('.upload-file-form');
+        container.style.display = container.style.display === "none" ? "block" : "none";
+    });
+
+    const maxUploadSize = parseInt(wpMultiBackup.max_upload_size, 10);
+    const uploadMaxFilesize = parseInt(wpMultiBackup.upload_max_filesize, 10);
+
+    $('#backup_file').on('change', function() {
+        const file = this.files[0];
+        if (file.size > maxUploadSize || file.size > uploadMaxFilesize) {
+            alert('El archivo excede el tamaño máximo permitido.');
+            $('#upload-form input[type="submit"]').prop('disabled', true);
+        } else {
+            $('#upload-form input[type="submit"]').prop('disabled', false);
+        }
+    });
+
     $('#upload-form').on('submit', function(e) {
         e.preventDefault();
         showLoadingIndicator();
