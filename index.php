@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.20
+Version: 0.0.21
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -576,6 +576,8 @@ function php_version_notice(): void
     $upload_max_filesize = ini_get('upload_max_filesize');
     $post_max_size = ini_get('post_max_size');
     $memory_limit = ini_get('memory_limit');
+    $max_execution_time = ini_get('max_execution_time');
+    $max_input_time = ini_get('max_input_time');
 
     $wp_version = get_bloginfo('version');
     $wp_multisite = is_multisite() ? 'Yes' : 'No';
@@ -587,10 +589,17 @@ function php_version_notice(): void
     $phpInfo = '<div class="wrap">
         <h1 class="wp-heading-inline">PHP Info</h1>
         <div class="php-info">
+            <p>PHP</p>
             <p><strong>PHP Version:</strong> ' . esc_html($php_version) . '</p>
             <p><strong>Upload Max Filesize:</strong> ' . esc_html($upload_max_filesize) . '</p>
             <p><strong>Post Max Size:</strong> ' . esc_html($post_max_size) . '</p>
             <p><strong>Memory Limit:</strong> ' . esc_html($memory_limit) . '</p>
+            <p><strong>Max Execution Time:</strong> ' . esc_html($max_execution_time) . '</p>
+            <p><strong>Max Input Time:</strong> ' . esc_html($max_input_time) . '</p>
+            
+            <br>
+            
+            <p>WordPress</p>
             <p><strong>WP Version:</strong> ' . esc_html($wp_version) . '</p>
             <p><strong>WP Multisite:</strong> ' . esc_html($wp_multisite) . '</p>
             <p><strong>WP Debug:</strong> ' . esc_html($wp_debug) . '</p>
