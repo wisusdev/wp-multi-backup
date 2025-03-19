@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.19
+Version: 0.0.20
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -14,7 +14,7 @@ Requires PHP: 7.4
 if (!defined('ABSPATH')) exit; // Seguridad
 
 // Carpeta donde se guardarán los respaldos
-define('BACKUP_DIR', WP_CONTENT_DIR . '/wp-multi-backups/');
+const BACKUP_DIR = WP_CONTENT_DIR . '/wp-multi-backups/';
 
 // Crear la carpeta si no existe
 if (!file_exists(BACKUP_DIR)) {
@@ -46,7 +46,8 @@ if (!file_exists($htaccess_path)) {
 }
 
 // Función para registrar errores en un archivo de log
-function logs($message) {
+function logs($message): void
+{
     $log_file = BACKUP_DIR . 'error_log.txt';
     $current_time = date("Y-m-d H:i:s");
     $log_message = "[$current_time] $message\n";
@@ -54,7 +55,8 @@ function logs($message) {
 }
 
 // Función para crear un respaldo de la base de datos con barra de progreso
-function backup_multisite_db() {
+function backup_multisite_db(): bool
+{
     global $wpdb;
 
     try {
@@ -115,7 +117,8 @@ function backup_multisite_db() {
 }
 
 // Función para crear un respaldo de un directorio con barra de progreso
-function backup_directory($directory, $backup_name) {
+function backup_directory($directory, $backup_name): bool
+{
     $zip = new ZipArchive();
     $backup_file = BACKUP_DIR . $backup_name . '-' . date("Y-m-d_H-i-s") . '.zip';
 
@@ -138,13 +141,15 @@ function backup_directory($directory, $backup_name) {
 }
 
 // Función para listar los respaldos por tipo
-function list_backups_by_type($type) {
+function list_backups_by_type($type): array
+{
     $files = glob(BACKUP_DIR . "$type-backup-*.zip");
     return array_map('basename', $files);
 }
 
 // Función para eliminar un respaldo
-function delete_backup($filename) {
+function delete_backup($filename): bool
+{
     $file_path = BACKUP_DIR . $filename;
     if (file_exists($file_path)) {
         unlink($file_path);
@@ -154,8 +159,14 @@ function delete_backup($filename) {
 }
 
 // Función para restaurar un respaldo de la base de datos
-function restore_db_backup($filename) {
+function restore_db_backup($filename): bool
+{
     global $wpdb;
+
+    $current_domain = parse_url(home_url(), PHP_URL_HOST);
+    $scheme = is_ssl() ? 'https' : 'http';
+    $full_url = $scheme . '://' . $current_domain;
+
     $file_path = BACKUP_DIR . $filename;
     if (file_exists($file_path)) {
         $zip = new ZipArchive;
@@ -186,7 +197,7 @@ function restore_db_backup($filename) {
                 // Consultas adicionales para modificar las tablas en multisite
                 $wpdb->query($wpdb->prepare("UPDATE wp_site SET domain = %s WHERE id = 1;", $current_domain));
                 $wpdb->query($wpdb->prepare("UPDATE wp_blogs SET domain = %s;", $current_domain));
-                $wpdb->query($wpdb->prepare("UPDATE wp_options SET option_value = %s WHERE option_name IN ('home', 'siteurl');", 'http://' . $current_domain));
+                $wpdb->query($wpdb->prepare("UPDATE wp_options SET option_value = %s WHERE option_name IN ('home', 'siteurl');", $full_url));
 
                 if(is_multisite()) {
                     $wpdb->query("UPDATE wp_options SET option_value = 'a:0:{}' WHERE option_name = 'active_plugins';");
@@ -200,7 +211,8 @@ function restore_db_backup($filename) {
 }
 
 // Función para restaurar un respaldo de un directorio
-function restore_directory_backup($backup_file, $restore_dir) {
+function restore_directory_backup($backup_file, $restore_dir): bool
+{
     $zip = new ZipArchive;
     if ($zip->open($backup_file) === TRUE) {
         $zip->extractTo($restore_dir);
@@ -312,7 +324,8 @@ function upload_error_message($error_code): string
 }
 
 // Función para manejar las peticiones AJAX
-function handle_ajax_requests() {
+function handle_ajax_requests(): void
+{
     check_ajax_referer('wp_multi_backup_nonce', 'nonce');
 
     $action = isset($_POST['action_type']) ? sanitize_text_field($_POST['action_type']) : '';
@@ -347,7 +360,6 @@ function handle_ajax_requests() {
         case 'restore_backup':
             $filename = sanitize_text_field($_POST['filename']);
             $type = sanitize_text_field($_POST['backup_type']);
-            $restored = false;
 
             if ($type === 'db') {
                 $restored = restore_db_backup($filename);
@@ -379,7 +391,8 @@ function handle_ajax_requests() {
 add_action('wp_ajax_handle_ajax_requests', 'handle_ajax_requests');
 
 // Función para mostrar el contenido de la página de administración
-function backup_menu_page_content() {
+function backup_menu_page_content(): void
+{
     echo '<div class="wrap">
         <h1 class="wp-heading-inline">WP Multi Backup <span id="loading-indicator" style="display:none;"><img class="loader-image" src="' . plugin_dir_url(__FILE__) . 'loading.gif" alt="Loading..." /></span></h1>
         <button id="show-upload-form" class="wrap page-title-action" style="float: right;">Subir respaldo</button>
@@ -394,7 +407,7 @@ function backup_menu_page_content() {
 
     echo '<script>
             document.getElementById("show-upload-form").addEventListener("click", function() {
-                var form = document.getElementById("upload-form");
+                let form = document.getElementById("upload-form");
                 form.style.display = form.style.display === "none" ? "block" : "none";
             });
           </script>';
@@ -418,8 +431,7 @@ function backup_menu_page_content() {
     echo '<a href="?page=wp-multi-backup&tab=uploads" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'uploads' ? 'nav-tab-active' : '') . '">Archivos subidos (' . $uploads_count . ')</a>';
     echo '</h2>';
 
-    $tab = isset($_GET['tab']) ? $_GET['tab'] : 'db';
-    $backups = [];
+    $tab = $_GET['tab'] ?? 'db';
 
     switch ($tab) {
         case 'themes':
@@ -468,7 +480,8 @@ function backup_menu_page_content() {
 }
 
 // Función para mostrar el contenido de la página de logs
-function logs_menu_page_content() {
+function logs_menu_page_content(): void
+{
     echo '<div class="wrap"><h1 class="wp-heading-inline">Logs de WP Multi Backup</h1></div>';
     $log_file = BACKUP_DIR . 'error_log.txt';
     if (file_exists($log_file)) {
@@ -486,7 +499,8 @@ function logs_menu_page_content() {
 }
 
 // Función para actualizar dominios de multisitio
-function update_multisite_domains() {
+function update_multisite_domains(): void
+{
     global $wpdb;
 
     $current_domain = parse_url(home_url(), PHP_URL_HOST);
@@ -527,7 +541,6 @@ function update_multisite_domains() {
         $domain = $wpdb->get_results("SELECT * FROM wp_" . $blog_id . "_options WHERE option_name = 'siteurl'");
 
         foreach ($domain as $d) {
-            $option_name = $d->option_name;
             $option_value = $d->option_value;
 
             // Extraer el path de la URL
@@ -557,7 +570,8 @@ function update_multisite_domains() {
     echo '</tbody></table>';
 }
 
-function php_version_notice() {
+function php_version_notice(): void
+{
     $php_version = phpversion();
     $upload_max_filesize = ini_get('upload_max_filesize');
     $post_max_size = ini_get('post_max_size');
@@ -588,7 +602,8 @@ function php_version_notice() {
 }
 
 // Función para agregar el menú de administración
-function add_backup_menu() {
+function add_backup_menu(): void
+{
     $capability = is_multisite() && is_super_admin() ? 'manage_network' : 'manage_options';
     add_menu_page(
         'WP Multi Backup', // Título de la página
@@ -630,14 +645,15 @@ add_action('network_admin_menu', 'add_backup_menu');
 
 // Descargar archivo si se solicita
 add_action('admin_init', function() {
-    if (isset($_GET['download']) && !empty($_GET['download'])) {
+    if (!empty($_GET['download'])) {
         $filename = sanitize_text_field($_GET['download']);
         download_backup($filename);
     }
 });
 
 // Función para descargar un respaldo
-function download_backup($filename) {
+function download_backup($filename): void
+{
     $file_url = site_url('/wp-content/wp-multi-backups/' . $filename);
 
     if (!file_exists(ABSPATH . 'wp-content/wp-multi-backups/' . $filename)) {
