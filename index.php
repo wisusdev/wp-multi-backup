@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.22
+Version: 0.0.23
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -226,6 +226,13 @@ function restore_directory_backup($backup_file, $restore_dir): bool
 function upload_backup($file): string
 {
     try {
+        $max_upload_size = min(ini_get_bytes('upload_max_filesize'), ini_get_bytes('post_max_size'));
+
+        if ($file["size"] > $max_upload_size) {
+            logs("El archivo sobrepasa upload_max_filesize o post_max_size. Ajusta php.ini para permitir archivos más grandes. Tamaño del archivo: " . $file["size"] . " bytes y máximo permitido: " . $max_upload_size . " bytes.");
+            return "El archivo es demasiado grande. Máximo permitido: " . format_bytes($max_upload_size) . " y el archivo es de " . format_bytes($file["size"]) . ".";
+        }
+
         if (!isset($file['error']) || is_array($file['error'])) {
             return "Error en la subida del archivo. " . json_encode($file['error']);
         }
@@ -242,13 +249,6 @@ function upload_backup($file): string
         // Validar el tipo de archivo
         if ($file_type !== "zip") {
             return "Solo se permiten archivos .zip.";
-        }
-
-        // Obtener el tamaño máximo permitido
-        $max_upload_size = min(ini_get_bytes('upload_max_filesize'), ini_get_bytes('post_max_size'));
-
-        if ($file["size"] > $max_upload_size) {
-            return "El archivo es demasiado grande. Máximo permitido: " . format_bytes($max_upload_size) . ".";
         }
 
         // Validar si el archivo ya existe

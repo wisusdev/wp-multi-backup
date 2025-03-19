@@ -51,7 +51,7 @@ jQuery(document).ready(function($) {
                 if (errorMessage) {
                     alert('Error: ' + errorMessage[1]);
                 } else {
-                    alert(error);
+                    alert(error.responseText);
                 }
                 $('#upload-progress').hide();
                 hideLoadingIndicator();
