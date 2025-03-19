@@ -11,7 +11,7 @@ jQuery(document).ready(function($) {
         e.preventDefault();
         showLoadingIndicator();
 
-        var formData = new FormData(this);
+        let formData = new FormData(this);
         formData.append('action', 'upload_backup');
         formData.append('nonce', wpMultiBackup.nonce);
 
@@ -25,10 +25,10 @@ jQuery(document).ready(function($) {
             processData: false,
             timeout: 0, // Desactivar el tiempo de espera para archivos grandes
             xhr: function() {
-                var xhr = new window.XMLHttpRequest();
+                let xhr = new window.XMLHttpRequest();
                 xhr.upload.addEventListener('progress', function(e) {
                     if (e.lengthComputable) {
-                        var percentComplete = (e.loaded / e.total) * 100;
+                        let percentComplete = (e.loaded / e.total) * 100;
                         $('#upload-progress').val(percentComplete);
                     }
                 }, false);
@@ -46,12 +46,12 @@ jQuery(document).ready(function($) {
                 location.reload();
             },
             error: function(error) {
-                console.log(error.responseText);
-                var errorMessage = error.responseText.match(/<p>(.*?)<\/p>/);
+                console.log(error);
+                let errorMessage = error.responseText.match(/<p>(.*?)<\/p>/);
                 if (errorMessage) {
                     alert('Error: ' + errorMessage[1]);
                 } else {
-                    alert('Error al subir el archivo.');
+                    alert(error);
                 }
                 $('#upload-progress').hide();
                 hideLoadingIndicator();
@@ -63,7 +63,7 @@ jQuery(document).ready(function($) {
         e.preventDefault();
         showLoadingIndicator();
 
-        var actionType = '';
+        let actionType = '';
         switch (this.id) {
             case 'create-db-backup':
                 actionType = 'create_db_backup';
@@ -99,7 +99,7 @@ jQuery(document).ready(function($) {
             },
             error: function(error) {
                 console.log(error.responseText);
-                var errorMessage = error.responseText.match(/<p>(.*?)<\/p>/);
+                let errorMessage = error.responseText.match(/<p>(.*?)<\/p>/);
                 if (errorMessage) {
                     alert('Error: ' + errorMessage[1]);
                 } else {
@@ -114,7 +114,7 @@ jQuery(document).ready(function($) {
         e.preventDefault();
         showLoadingIndicator();
 
-        var filename = $(this).data('filename');
+        let filename = $(this).data('filename');
 
         $.ajax({
             url: wpMultiBackup.ajax_url,
@@ -136,7 +136,7 @@ jQuery(document).ready(function($) {
             },
             error: function(error) {
                 console.log(error.responseText);
-                var errorMessage = error.responseText.match(/<p>(.*?)<\/p>/);
+                let errorMessage = error.responseText.match(/<p>(.*?)<\/p>/);
                 if (errorMessage) {
                     alert('Error: ' + errorMessage[1]);
                 } else {
@@ -151,8 +151,8 @@ jQuery(document).ready(function($) {
         e.preventDefault();
         showLoadingIndicator();
 
-        var filename = $(this).data('filename');
-        var type = $(this).data('type');
+        let filename = $(this).data('filename');
+        let type = $(this).data('type');
 
         $.ajax({
             url: wpMultiBackup.ajax_url,
@@ -175,7 +175,7 @@ jQuery(document).ready(function($) {
             },
             error: function(error) {
                 console.log(error.responseText);
-                var errorMessage = error.responseText.match(/<p>(.*?)<\/p>/);
+                let errorMessage = error.responseText.match(/<p>(.*?)<\/p>/);
                 if (errorMessage) {
                     alert('Error: ' + errorMessage[1]);
                 } else {
