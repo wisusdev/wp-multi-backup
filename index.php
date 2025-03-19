@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.13
+Version: 0.0.14
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -321,7 +321,7 @@ function backup_menu_page_content() {
     echo '<div class=""><form class="upload-form-backup" id="upload-form" method="post" enctype="multipart/form-data" style="display: none;">
             <input type="file" name="backup_file" id="backup_file">
             <input type="submit" class="button button-primary" value="Subir Respaldo">
-            <progress id="upload-progress" value="0" max="100" style="width: 100%; display: none;"></progress>
+            <progress id="upload-progress" value="0" max="100"></progress>
           </form></div>';
 
     echo '<script>

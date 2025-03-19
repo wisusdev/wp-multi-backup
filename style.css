@@ -30,3 +30,9 @@
 .loader-image {
     width: 20px;
 }
+
+#upload-progress {
+    width: 100%;
+    display: none;
+    margin-top: 15px;
+}
