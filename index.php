@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.15
+Version: 0.0.17
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -21,7 +21,7 @@ if (!file_exists(BACKUP_DIR)) {
     try {
         mkdir(BACKUP_DIR, 0755, true);
     } catch (Exception $e) {
-        log_error($e->getMessage());
+        logs($e->getMessage());
     }
 }
 
@@ -41,17 +41,16 @@ if (!file_exists($htaccess_path)) {
         HTACCESS;
         file_put_contents($htaccess_path, $htaccess_content);
     } catch (Exception $e) {
-        log_error($e->getMessage());
+        logs($e->getMessage());
     }
 }
 
 // Función para registrar errores en un archivo de log
-function log_error($message) {
+function logs($message) {
     $log_file = BACKUP_DIR . 'error_log.txt';
     $current_time = date("Y-m-d H:i:s");
     $log_message = "[$current_time] $message\n";
     file_put_contents($log_file, $log_message, FILE_APPEND);
-    echo '<div class="error"><p>' . esc_html($message) . '</p></div>';
 }
 
 // Función para crear un respaldo de la base de datos con barra de progreso
@@ -110,7 +109,7 @@ function backup_multisite_db() {
 
         return true;
     } catch (Exception $e) {
-        log_error($e->getMessage());
+        logs($e->getMessage());
         return false;
     }
 }
@@ -212,11 +211,12 @@ function restore_directory_backup($backup_file, $restore_dir) {
 }
 
 // Función para subir un respaldo
-function upload_backup($file) {
+function upload_backup($file): string
+{
     $target_dir = BACKUP_DIR;
     $target_file = $target_dir . basename($file["name"]);
     $file_type = pathinfo($target_file, PATHINFO_EXTENSION);
-    $max_upload_size = wp_max_upload_size();
+    $max_upload_size = ini_get('upload_max_filesize');
 
     // Validar el tipo de archivo
     if ($file_type != "zip") {
@@ -224,8 +224,8 @@ function upload_backup($file) {
     }
 
     // Validar el tamaño del archivo
-    if ($file["size"] > $max_upload_size) {
-        return "El archivo es demasiado grande.";
+    if ($file["size"] > 1048576 * intval($max_upload_size)) {
+        return "El archivo es demasiado grande. Máximo permitido: $max_upload_size MB.";
     }
 
     // Validar si el archivo ya existe
@@ -233,13 +233,19 @@ function upload_backup($file) {
         return "El archivo ya existe.";
     }
 
+    // Validar permisos de escritura
+    if (!is_writable($target_dir)) {
+        return "No se puede escribir en el directorio de respaldos.";
+    }
+
     // Mover el archivo subido al directorio de respaldos
     if (move_uploaded_file($file["tmp_name"], $target_file)) {
-        log_error("Archivo subido: " . $file["name"]);
+        logs("Archivo subido: " . $file["name"]);
         return "El archivo ha sido subido.";
     } else {
-        log_error("Error al subir el archivo: " . $file["name"]);
-        return "Error al subir el archivo.";
+        $error = error_get_last();
+        logs("Error al subir el archivo: " . $file["name"] . ". Detalles: " . $error['message']);
+        return "Error al subir el archivo. Detalles: " . $error['message'];
     }
 }
 
@@ -489,6 +495,36 @@ function update_multisite_domains() {
     echo '</tbody></table>';
 }
 
+function php_version_notice() {
+    $php_version = phpversion();
+    $upload_max_filesize = ini_get('upload_max_filesize');
+    $post_max_size = ini_get('post_max_size');
+    $memory_limit = ini_get('memory_limit');
+
+    $wp_version = get_bloginfo('version');
+    $wp_multisite = is_multisite() ? 'Yes' : 'No';
+    $wp_debug = defined('WP_DEBUG') && WP_DEBUG ? 'Yes' : 'No';
+    $wp_memory_limit = WP_MEMORY_LIMIT;
+    $wp_max_upload_size = size_format(wp_max_upload_size());
+
+
+    $phpInfo = '<div class="wrap">
+        <h1 class="wp-heading-inline">PHP Info</h1>
+        <div class="php-info">
+            <p><strong>PHP Version:</strong> ' . esc_html($php_version) . '</p>
+            <p><strong>Upload Max Filesize:</strong> ' . esc_html($upload_max_filesize) . '</p>
+            <p><strong>Post Max Size:</strong> ' . esc_html($post_max_size) . '</p>
+            <p><strong>Memory Limit:</strong> ' . esc_html($memory_limit) . '</p>
+            <p><strong>WP Version:</strong> ' . esc_html($wp_version) . '</p>
+            <p><strong>WP Multisite:</strong> ' . esc_html($wp_multisite) . '</p>
+            <p><strong>WP Debug:</strong> ' . esc_html($wp_debug) . '</p>
+            <p><strong>WP Memory Limit:</strong> ' . esc_html($wp_memory_limit) . '</p>
+            <p><strong>WP Max Upload Size:</strong> ' . esc_html($wp_max_upload_size) . '</p>
+        </div>
+    </div>';
+    echo $phpInfo;
+}
+
 // Función para agregar el menú de administración
 function add_backup_menu() {
     $capability = is_multisite() && is_super_admin() ? 'manage_network' : 'manage_options';
@@ -516,6 +552,14 @@ function add_backup_menu() {
         $capability, // Capacidad requerida
         'wp-multi-backup-logs', // Slug del submenú
         'logs_menu_page_content' // Contenido de la página
+    );
+    add_submenu_page(
+        'wp-multi-backup', // Slug del menú principal
+        'PHP & WP Info', // Título de la página
+        'PHP & WP Info', // Título del submenú
+        $capability, // Capacidad requerida
+        'wp-multi-backup-php-info', // Slug del submenú
+        'php_version_notice' // Contenido de la página
     );
 }
 
@@ -561,10 +605,10 @@ function handle_ajax_upload() {
     if (!empty($_FILES['backup_file'])) {
         $file = $_FILES['backup_file'];
         $message = upload_backup($file);
-        log_error("Resultado de la subida vía AJAX: " . $message);
+        logs("Resultado de la subida vía AJAX: " . $message);
         wp_send_json_success($message);
     } else {
-        log_error("No se recibió ningún archivo en la subida vía AJAX.");
+        logs("No se recibió ningún archivo en la subida vía AJAX.");
         wp_send_json_error('No se recibió ningún archivo.');
     }
 }
