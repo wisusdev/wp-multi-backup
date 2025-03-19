@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.18
+Version: 0.0.19
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -214,19 +214,29 @@ function restore_directory_backup($backup_file, $restore_dir) {
 function upload_backup($file): string
 {
     try {
+        if (!isset($file['error']) || is_array($file['error'])) {
+            return "Error en la subida del archivo.";
+        }
+
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            return "Error en la subida del archivo: " . upload_error_message($file['error']);
+        }
+
         $target_dir = BACKUP_DIR;
-        $target_file = $target_dir . basename($file["name"]);
-        $file_type = pathinfo($target_file, PATHINFO_EXTENSION);
-        $max_upload_size = ini_get('upload_max_filesize');
+        $file_name = basename($file["name"]);
+        $target_file = $target_dir . DIRECTORY_SEPARATOR . $file_name;
+        $file_type = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
 
         // Validar el tipo de archivo
-        if ($file_type != "zip") {
+        if ($file_type !== "zip") {
             return "Solo se permiten archivos .zip.";
         }
 
-        // Validar el tamaño del archivo
-        if ($file["size"] > 1048576 * intval($max_upload_size)) {
-            return "El archivo es demasiado grande. Máximo permitido: $max_upload_size MB.";
+        // Obtener el tamaño máximo permitido
+        $max_upload_size = min(ini_get_bytes('upload_max_filesize'), ini_get_bytes('post_max_size'));
+
+        if ($file["size"] > $max_upload_size) {
+            return "El archivo es demasiado grande. Máximo permitido: " . format_bytes($max_upload_size) . ".";
         }
 
         // Validar si el archivo ya existe
@@ -240,18 +250,65 @@ function upload_backup($file): string
         }
 
         // Mover el archivo subido al directorio de respaldos
-        if (move_uploaded_file($file["tmp_name"], $target_file)) {
-            logs("Archivo subido: " . $file["name"]);
-            return "El archivo ha sido subido.";
-        } else {
-            $error = error_get_last();
-            logs("Error al subir el archivo: " . $file["name"] . ". Detalles: " . $error['message']);
-            return "Error al subir el archivo. Detalles: " . $error['message'];
+        if (!move_uploaded_file($file["tmp_name"], $target_file)) {
+            return "Error al mover el archivo.";
         }
+
+        logs("Archivo subido: " . $file_name);
+        return "El archivo ha sido subido correctamente.";
     } catch (Exception $e) {
         logs($e->getMessage());
-        return $e->getMessage();
+        return "Error inesperado: " . $e->getMessage();
     }
+}
+
+/**
+ * Convierte valores de PHP ini como '2M' en bytes.
+ */
+function ini_get_bytes($key): int
+{
+    $val = trim(ini_get($key));
+    $last = strtolower($val[strlen($val) - 1]);
+
+    $multipliers = [
+        'k' => 1024,
+        'm' => 1048576,
+        'g' => 1073741824
+    ];
+
+    return (int)$val * ($multipliers[$last] ?? 1);
+}
+
+/**
+ * Formatea bytes en KB, MB o GB.
+ */
+function format_bytes($size, $precision = 2): string
+{
+    $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    $i = 0;
+    while ($size >= 1024 && $i < count($units) - 1) {
+        $size /= 1024;
+        $i++;
+    }
+    return round($size, $precision) . ' ' . $units[$i];
+}
+
+/**
+ * Mapea los códigos de error de subida a mensajes más descriptivos.
+ */
+function upload_error_message($error_code): string
+{
+    $errors = [
+        UPLOAD_ERR_INI_SIZE   => "El archivo excede el tamaño máximo permitido por el servidor.",
+        UPLOAD_ERR_FORM_SIZE  => "El archivo excede el tamaño máximo permitido en el formulario.",
+        UPLOAD_ERR_PARTIAL    => "El archivo solo se subió parcialmente.",
+        UPLOAD_ERR_NO_FILE    => "No se seleccionó ningún archivo.",
+        UPLOAD_ERR_NO_TMP_DIR => "Falta un directorio temporal en el servidor.",
+        UPLOAD_ERR_CANT_WRITE => "Error al escribir el archivo en el servidor.",
+        UPLOAD_ERR_EXTENSION  => "La subida del archivo fue bloqueada por una extensión de PHP."
+    ];
+
+    return $errors[$error_code] ?? "Error desconocido.";
 }
 
 // Función para manejar las peticiones AJAX
