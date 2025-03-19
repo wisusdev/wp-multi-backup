@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.17
+Version: 0.0.18
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -213,39 +213,44 @@ function restore_directory_backup($backup_file, $restore_dir) {
 // Función para subir un respaldo
 function upload_backup($file): string
 {
-    $target_dir = BACKUP_DIR;
-    $target_file = $target_dir . basename($file["name"]);
-    $file_type = pathinfo($target_file, PATHINFO_EXTENSION);
-    $max_upload_size = ini_get('upload_max_filesize');
+    try {
+        $target_dir = BACKUP_DIR;
+        $target_file = $target_dir . basename($file["name"]);
+        $file_type = pathinfo($target_file, PATHINFO_EXTENSION);
+        $max_upload_size = ini_get('upload_max_filesize');
 
-    // Validar el tipo de archivo
-    if ($file_type != "zip") {
-        return "Solo se permiten archivos .zip.";
-    }
+        // Validar el tipo de archivo
+        if ($file_type != "zip") {
+            return "Solo se permiten archivos .zip.";
+        }
 
-    // Validar el tamaño del archivo
-    if ($file["size"] > 1048576 * intval($max_upload_size)) {
-        return "El archivo es demasiado grande. Máximo permitido: $max_upload_size MB.";
-    }
+        // Validar el tamaño del archivo
+        if ($file["size"] > 1048576 * intval($max_upload_size)) {
+            return "El archivo es demasiado grande. Máximo permitido: $max_upload_size MB.";
+        }
 
-    // Validar si el archivo ya existe
-    if (file_exists($target_file)) {
-        return "El archivo ya existe.";
-    }
+        // Validar si el archivo ya existe
+        if (file_exists($target_file)) {
+            return "El archivo ya existe.";
+        }
 
-    // Validar permisos de escritura
-    if (!is_writable($target_dir)) {
-        return "No se puede escribir en el directorio de respaldos.";
-    }
+        // Validar permisos de escritura
+        if (!is_writable($target_dir)) {
+            return "No se puede escribir en el directorio de respaldos.";
+        }
 
-    // Mover el archivo subido al directorio de respaldos
-    if (move_uploaded_file($file["tmp_name"], $target_file)) {
-        logs("Archivo subido: " . $file["name"]);
-        return "El archivo ha sido subido.";
-    } else {
-        $error = error_get_last();
-        logs("Error al subir el archivo: " . $file["name"] . ". Detalles: " . $error['message']);
-        return "Error al subir el archivo. Detalles: " . $error['message'];
+        // Mover el archivo subido al directorio de respaldos
+        if (move_uploaded_file($file["tmp_name"], $target_file)) {
+            logs("Archivo subido: " . $file["name"]);
+            return "El archivo ha sido subido.";
+        } else {
+            $error = error_get_last();
+            logs("Error al subir el archivo: " . $file["name"] . ". Detalles: " . $error['message']);
+            return "Error al subir el archivo. Detalles: " . $error['message'];
+        }
+    } catch (Exception $e) {
+        logs($e->getMessage());
+        return $e->getMessage();
     }
 }
 
@@ -587,7 +592,8 @@ function download_backup($filename) {
     exit;
 }
 
-function wp_multi_backup_enqueue_scripts() {
+function wp_multi_backup_enqueue_scripts(): void
+{
     wp_enqueue_style('wp-multi-backup-style', plugin_dir_url(__FILE__) . 'style.css');
     wp_enqueue_script('wp-multi-backup-script', plugin_dir_url(__FILE__) . 'script.js', array('jquery'), null, true);
     wp_localize_script('wp-multi-backup-script', 'wpMultiBackup', array(
@@ -599,7 +605,8 @@ function wp_multi_backup_enqueue_scripts() {
 add_action('admin_enqueue_scripts', 'wp_multi_backup_enqueue_scripts');
 
 // Función para manejar la subida de archivos vía AJAX
-function handle_ajax_upload() {
+function handle_ajax_upload(): void
+{
     check_ajax_referer('wp_multi_backup_nonce', 'nonce');
 
     if (!empty($_FILES['backup_file'])) {
