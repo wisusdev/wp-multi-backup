@@ -14,9 +14,9 @@
     border: 1px solid #c3c4c7;
     padding: 30px;
     margin: 30px auto;
-    display: inline-flex;
     justify-content: space-between;
     align-items: center;
+    display: block;
 }
 
 .update-domain-form {
