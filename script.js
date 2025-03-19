@@ -38,11 +38,12 @@ jQuery(document).ready(function($) {
                 if (response.success) {
                     alert(response.data);
                 } else {
-                    alert('Error: ' + response.data);
+                    alert(response.data);
                 }
                 $('#upload-progress').hide();
                 $('#upload-form')[0].reset();
                 hideLoadingIndicator();
+                location.reload();
             },
             error: function(error) {
                 console.log(error.responseText);
