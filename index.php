@@ -3,7 +3,7 @@
 Plugin Name: WP Multi Backup
 Plugin URI: wisus.dev
 Description: Plugin para exportar, listar, descargar y eliminar respaldos de la base de datos en WordPress Multisite.
-Version: 0.0.24
+Version: 0.0.25
 Author: Jesús Avelar
 Author URI: linkedin.com/in/wisusdev
 License: GPL2
@@ -12,6 +12,12 @@ Requires PHP: 7.4
 */
 
 if (!defined('ABSPATH')) exit; // Seguridad
+
+// Importamos vistas
+require_once plugin_dir_path(__FILE__) . 'views/logs.php';
+require_once plugin_dir_path(__FILE__) . 'views/php_wp_info.php';
+require_once plugin_dir_path(__FILE__) . 'views/update_multisite_domains.php';
+require_once plugin_dir_path(__FILE__) . 'views/backups_manager.php';
 
 // Carpeta donde se guardarán los respaldos
 const BACKUP_DIR = WP_CONTENT_DIR . '/wp-multi-backups/';
@@ -45,14 +51,47 @@ if (!file_exists($htaccess_path)) {
     }
 }
 
-// Función para registrar errores en un archivo de log
-function logs($message): void
+// Función para agregar el menú de administración
+function add_backup_menu(): void
 {
-    $log_file = BACKUP_DIR . 'error_log.txt';
-    $current_time = date("Y-m-d H:i:s");
-    $log_message = "[$current_time] $message\n";
-    file_put_contents($log_file, $log_message, FILE_APPEND);
+    $capability = is_multisite() && is_super_admin() ? 'manage_network' : 'manage_options';
+    add_menu_page(
+        'WP Multi Backup', // Título de la página
+        'WP Multi Backup',
+        $capability, // Capacidad requerida
+        'wp-multi-backup', // Slug de la página
+        'backup_menu_page_content', // Contenido de la página
+        'dashicons-backup', // Icono del menú
+        6 // Posición del menú
+    );
+    add_submenu_page(
+        'wp-multi-backup', // Slug del menú principal
+        'Actualizar dominios', // Título de la página
+        'Actualizar dominios', // Título del submenú
+        $capability,
+        'wp-multi-backup-update-domains', // Slug del submenú
+        'update_multisite_domains' // Contenido de la página
+    );
+    add_submenu_page(
+        'wp-multi-backup', // Slug del menú principal
+        'Logs', // Título de la página
+        'Logs', // Título del submenú
+        $capability, // Capacidad requerida
+        'wp-multi-backup-logs', // Slug del submenú
+        'logs_menu_page_content' // Contenido de la página
+    );
+    add_submenu_page(
+        'wp-multi-backup', // Slug del menú principal
+        'PHP & WP Info', // Título de la página
+        'PHP & WP Info', // Título del submenú
+        $capability, // Capacidad requerida
+        'wp-multi-backup-php-info', // Slug del submenú
+        'php_version_notice' // Contenido de la página
+    );
 }
+
+add_action('admin_menu', 'add_backup_menu');
+add_action('network_admin_menu', 'add_backup_menu');
 
 // Función para crear un respaldo de la base de datos con barra de progreso
 function backup_multisite_db(): bool
@@ -140,12 +179,7 @@ function backup_directory($directory, $backup_name): bool
     return false;
 }
 
-// Función para listar los respaldos por tipo
-function list_backups_by_type($type): array
-{
-    $files = glob(BACKUP_DIR . "$type-backup-*.zip");
-    return array_map('basename', $files);
-}
+
 
 // Función para eliminar un respaldo
 function delete_backup($filename): bool
@@ -389,271 +423,6 @@ function handle_ajax_requests(): void
 
 add_action('wp_ajax_handle_ajax_requests', 'handle_ajax_requests');
 
-// Función para mostrar el contenido de la página de administración
-function backup_menu_page_content(): void
-{
-    echo '<div class="wrap">
-        <h1 class="wp-heading-inline">WP Multi Backup <span id="loading-indicator" style="display:none;"><img class="loader-image" src="' . plugin_dir_url(__FILE__) . 'loading.gif" alt="Loading..." /></span></h1>
-        <button id="show-upload-form" class="wrap page-title-action" style="float: right;">Subir respaldo</button>
-    </div>';
-
-    // Formulario para subir un respaldo (oculto por defecto)
-    echo '<div class="upload-file-form" style="display: none;">
-            <p>
-                Antes de subir un respaldo, asegúrate de que el archivo sea un <strong>.zip</strong> y que no exceda el tamaño máximo permitido por el servidor.
-                El tamaño máximo permitido para subir archivos es de <strong>' . ini_get('upload_max_filesize') . '</strong>.
-                El tamaño máximo permitido para subir archivos en un formulario es de <strong>' . ini_get('post_max_size') . '</strong>.
-                El límite de memoria actual es de <strong>' . ini_get('memory_limit') . '</strong>.
-            </p>
-            <p><strong>Nota:</strong> Si el archivo es muy grande, es posible que la subida tarde un poco. Por favor, no cierres la página hasta que se complete la subida.</p>
-            
-            <form class="upload-form-backup" id="upload-form" method="post" enctype="multipart/form-data">
-                <input type="file" name="backup_file" id="backup_file" required accept="application/zip">
-                <input type="submit" class="button button-primary" value="Subir Respaldo">
-                <progress id="upload-progress" value="0" max="100"></progress>
-            </form>
-          </div>';
-
-    // Mostrar mensajes
-    if (isset($_GET['message'])) {
-        echo '<div class="updated"><p>' . esc_html($_GET['message']) . '</p></div>';
-    }
-
-    // Contadores de respaldos
-    $db_count = count(list_backups_by_type('db'));
-    $themes_count = count(list_backups_by_type('themes'));
-    $plugins_count = count(list_backups_by_type('plugins'));
-    $uploads_count = count(list_backups_by_type('uploads'));
-
-    // Tabs para mostrar respaldos
-    echo '<h2 class="nav-tab-wrapper">';
-    echo '<a href="?page=wp-multi-backup&tab=db" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'db' ? 'nav-tab-active' : '') . '">Base de datos (' . $db_count . ')</a>';
-    echo '<a href="?page=wp-multi-backup&tab=themes" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'themes' ? 'nav-tab-active' : '') . '">Temas (' . $themes_count . ')</a>';
-    echo '<a href="?page=wp-multi-backup&tab=plugins" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'plugins' ? 'nav-tab-active' : '') . '">Plugins (' . $plugins_count . ')</a>';
-    echo '<a href="?page=wp-multi-backup&tab=uploads" class="nav-tab ' . (isset($_GET['tab']) && $_GET['tab'] == 'uploads' ? 'nav-tab-active' : '') . '">Archivos subidos (' . $uploads_count . ')</a>';
-    echo '</h2>';
-
-    $tab = $_GET['tab'] ?? 'db';
-
-    switch ($tab) {
-        case 'themes':
-            $input = '<button id="create-themes-backup" class="button button-primary">Crear respaldo de temas</button>';
-            $backups = list_backups_by_type('themes');
-            break;
-        case 'plugins':
-            $input = '<button id="create-plugins-backup" class="button button-primary">Crear respaldo de plugins</button>';
-            $backups = list_backups_by_type('plugins');
-            break;
-        case 'uploads':
-            $input = '<button id="create-uploads-backup" class="button button-primary">Crear respaldo de archivos subidos</button>';
-            $backups = list_backups_by_type('uploads');
-            break;
-        case 'db':
-        default:
-            $input = '<button id="create-db-backup" class="button button-primary">Crear respaldo de la base de datos</button>';
-            $backups = list_backups_by_type('db');
-            break;
-    }
-
-    echo '<div class="wrap">';
-    echo '<form id="backup-form">' . $input . '</form>';
-    
-    if (!empty($backups)) {
-        echo '<br>';
-        echo '<table class="widefat"><thead><tr><th>Archivo</th><th>Tamaño (MB)</th><th>Acciones</th></tr></thead><tbody>';
-        foreach ($backups as $backup) {
-            $file_path = BACKUP_DIR . $backup;
-            $file_size = file_exists($file_path) ? round(filesize($file_path) / 1048576, 2) : 'N/A';
-            echo '<tr>
-                    <td>' . esc_html($backup) . '</td>
-                    <td>' . esc_html($file_size) . '</td>
-                    <td>
-                        <a href="' . esc_url(admin_url('admin.php?page=wp-multi-backup&download=' . urlencode($backup))) . '" class="button">Descargar</a>
-                        <button class="button button-danger delete-backup" data-filename="' . esc_attr($backup) . '">Eliminar</button>
-                        <button class="button button-primary restore-backup" data-filename="' . esc_attr($backup) . '" data-type="' . esc_attr($tab) . '">Restaurar</button>
-                    </td>
-                </tr>';
-        }
-        echo '</tbody></table>';
-    } else {
-        echo '<p>No hay respaldos disponibles.</p>';
-    }
-    echo '</div>';
-}
-
-// Función para mostrar el contenido de la página de logs
-function logs_menu_page_content(): void
-{
-    echo '<div class="wrap"><h1 class="wp-heading-inline">Logs de WP Multi Backup</h1></div>';
-    $log_file = BACKUP_DIR . 'error_log.txt';
-    if (file_exists($log_file)) {
-        if (isset($_POST['delete_logs'])) {
-            unlink($log_file);
-            echo '<div class="updated"><p>Logs eliminados.</p></div>';
-        } else {
-            $logs = file_get_contents($log_file);
-            echo '<form method="post"><input type="submit" name="delete_logs" class="button button-danger" value="Eliminar Logs"></form>';
-            echo '<pre>' . esc_html($logs) . '</pre>';
-        }
-    } else {
-        echo '<p>No hay logs disponibles.</p>';
-    }
-}
-
-// Función para actualizar dominios de multisitio
-function update_multisite_domains(): void
-{
-    global $wpdb;
-
-    $current_domain = parse_url(home_url(), PHP_URL_HOST);
-    $scheme = is_ssl() ? 'https' : 'http';
-    $full_url = $scheme . '://' . $current_domain;
-
-    echo '<div class="wrap"><h1 class="wp-heading-inline">Actualizar dominios</h1></div>';
-
-    $blog_id = isset($_POST['blog_id']) ? intval($_POST['blog_id']) : 0;
-    $new_domain = isset($_POST['new_domain']) ? esc_url($_POST['new_domain']) : '';
-
-    if (isset($_POST['update_blog_domains_' . $blog_id])) {
-        // Update option value where option name is 'home' and 'siteurl'
-        $wpdb->update('wp_' . $blog_id . '_options', array('option_value' => $new_domain), array('option_name' => 'home'));
-        $wpdb->update('wp_' . $blog_id . '_options', array('option_value' => $new_domain), array('option_name' => 'siteurl'));
-    }
-
-    // Get wp_blog table
-    $blogs = $wpdb->get_results("SELECT blog_id FROM wp_blogs", ARRAY_A);
-
-    echo '<table id="table-update-domain" class="widefat">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Actions</th>
-                <th>URL</th>
-            </tr>
-        </thead>
-        <tbody>';
-
-    foreach ($blogs as $blog) {
-        $blog_id = $blog['blog_id'];
-        
-        if($blog_id == 1) {
-            continue;
-        }
-
-        $domain = $wpdb->get_results("SELECT * FROM wp_" . $blog_id . "_options WHERE option_name = 'siteurl'");
-
-        foreach ($domain as $d) {
-            $option_value = $d->option_value;
-
-            // Extraer el path de la URL
-            $path = parse_url($option_value, PHP_URL_PATH);
-            
-            // Si existe el path, concatenar el nuevo dominio
-            if ($path) {
-                $new_url = $full_url . $path;
-            } else {
-                $new_url = $full_url;
-            }
-
-            echo '<tr>
-                <td>' . esc_html($blog_id) . '</td>
-                <td>
-                    <form method="post">
-                        <input class="input-update-domain" type="text" name="new_domain" value="' . esc_attr($new_url) . '">
-                        <input type="hidden" name="blog_id" value="' . esc_attr($blog_id) . '">
-                        <input type="submit" name="update_blog_domains_' . $blog_id . '" class="button button-primary" value="Actualizar">
-                    </form>
-                </td>
-                <td><a href="' . esc_url($new_url) . '" target="_blank">' . esc_html($option_value) . '</a></td>
-            </tr>';
-        }
-    }
-
-    echo '</tbody></table>';
-}
-
-function php_version_notice(): void
-{
-    $php_version = phpversion();
-    $upload_max_filesize = ini_get('upload_max_filesize');
-    $post_max_size = ini_get('post_max_size');
-    $memory_limit = ini_get('memory_limit');
-    $max_execution_time = ini_get('max_execution_time');
-    $max_input_time = ini_get('max_input_time');
-
-    $wp_version = get_bloginfo('version');
-    $wp_multisite = is_multisite() ? 'Yes' : 'No';
-    $wp_debug = defined('WP_DEBUG') && WP_DEBUG ? 'Yes' : 'No';
-    $wp_memory_limit = WP_MEMORY_LIMIT;
-    $wp_max_upload_size = size_format(wp_max_upload_size());
-
-
-    $phpInfo = '<div class="wrap">
-        <h1 class="wp-heading-inline">PHP Info</h1>
-        <div class="php-info">
-            <p>PHP</p>
-            <p><strong>PHP Version:</strong> ' . esc_html($php_version) . '</p>
-            <p><strong>Upload Max Filesize:</strong> ' . esc_html($upload_max_filesize) . '</p>
-            <p><strong>Post Max Size:</strong> ' . esc_html($post_max_size) . '</p>
-            <p><strong>Memory Limit:</strong> ' . esc_html($memory_limit) . '</p>
-            <p><strong>Max Execution Time:</strong> ' . esc_html($max_execution_time) . ' seconds</p>
-            <p><strong>Max Input Time:</strong> ' . esc_html($max_input_time) . ' seconds</p>
-            
-            <br>
-            
-            <p>WordPress</p>
-            <p><strong>WP Version:</strong> ' . esc_html($wp_version) . '</p>
-            <p><strong>WP Multisite:</strong> ' . esc_html($wp_multisite) . '</p>
-            <p><strong>WP Debug:</strong> ' . esc_html($wp_debug) . '</p>
-            <p><strong>WP Memory Limit:</strong> ' . esc_html($wp_memory_limit) . '</p>
-            <p><strong>WP Max Upload Size:</strong> ' . esc_html($wp_max_upload_size) . '</p>
-        </div>
-    </div>';
-    echo $phpInfo;
-}
-
-// Función para agregar el menú de administración
-function add_backup_menu(): void
-{
-    $capability = is_multisite() && is_super_admin() ? 'manage_network' : 'manage_options';
-    add_menu_page(
-        'WP Multi Backup', // Título de la página
-        'WP Multi Backup',
-        $capability, // Capacidad requerida
-        'wp-multi-backup', // Slug de la página
-        'backup_menu_page_content', // Contenido de la página
-        'dashicons-backup', // Icono del menú
-        6 // Posición del menú
-    );
-    add_submenu_page(
-        'wp-multi-backup', // Slug del menú principal
-        'Actualizar dominios', // Título de la página
-        'Actualizar dominios', // Título del submenú
-        $capability,
-        'wp-multi-backup-update-domains', // Slug del submenú
-        'update_multisite_domains' // Contenido de la página
-    );
-    add_submenu_page(
-        'wp-multi-backup', // Slug del menú principal
-        'Logs', // Título de la página
-        'Logs', // Título del submenú
-        $capability, // Capacidad requerida
-        'wp-multi-backup-logs', // Slug del submenú
-        'logs_menu_page_content' // Contenido de la página
-    );
-    add_submenu_page(
-        'wp-multi-backup', // Slug del menú principal
-        'PHP & WP Info', // Título de la página
-        'PHP & WP Info', // Título del submenú
-        $capability, // Capacidad requerida
-        'wp-multi-backup-php-info', // Slug del submenú
-        'php_version_notice' // Contenido de la página
-    );
-}
-
-add_action('admin_menu', 'add_backup_menu');
-add_action('network_admin_menu', 'add_backup_menu');
-
 // Descargar archivo si se solicita
 add_action('admin_init', function() {
     if (!empty($_GET['download'])) {
@@ -690,26 +459,3 @@ function wp_multi_backup_enqueue_scripts(): void
 
 add_action('admin_enqueue_scripts', 'wp_multi_backup_enqueue_scripts');
 
-// Función para manejar la subida de archivos vía AJAX
-function handle_ajax_upload(): void
-{
-    $start = microtime(true);
-
-    check_ajax_referer('wp_multi_backup_nonce', 'nonce');
-
-    if (!empty($_FILES['backup_file'])) {
-        $file = $_FILES['backup_file'];
-        $message = upload_backup($file);
-
-        $end = microtime(true);
-        $duration = $end - $start;
-        logs("Resultado de la subida vía AJAX: " . $message . ". Tiempo de ejecución: " . round($duration, 3) . " seg.");
-
-        wp_send_json_success($message . " (Tardó " . round($duration, 3) . " seg.)");
-    } else {
-        logs("No se recibió ningún archivo en la subida vía AJAX.");
-        wp_send_json_error('No se recibió ningún archivo.');
-    }
-}
-
-add_action('wp_ajax_upload_backup', 'handle_ajax_upload');
